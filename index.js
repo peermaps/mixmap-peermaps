@@ -27,13 +27,19 @@ function P(opts) {
   self._geodata = null
   self.layer = self._map.addLayer({
     viewbox: function (bbox, zoom, cb) {
-      var start = performance.now()
+      //var start = performance.now()
       // cull boxes that no longer overlap
       var culling = 0
       for (var i = 0; i < self._buffers.length; i++) {
-        if (bboxIntersect(bbox, self._buffers[i].bbox)) {
+        var b = self._buffers[i]
+        if (bboxIntersect(bbox, b.bbox)) {
           culling++
-          self._plan.subtract(self._buffers[i].bbox)
+          if (self._queryOpen[b.index]) {
+            self._queryCanceled[b.index] = true
+            delete self._queryOpen[b.index]
+          }
+          self._plan.subtract(b.bbox)
+          self._bufferSize -= b.buffers.length
           self._buffers[i] = null
         }
       }
@@ -58,24 +64,45 @@ function P(opts) {
   self._plan = planner()
   self._buffers = []
   self._bufferSize = 0
+  self._lastQueryIndex = -1
+  self._queryCanceled = {}
+  self._queryOpen = {}
+  self._recalcTimer = null
+  self._recalcTime = 0
   self.props = {}
 }
 
 P.prototype._error = function (err) {
-  console.error(err)
+  console.error('CAUGHT', err)
+}
+
+P.prototype._scheduleRecalc = function () {
+  var self = this
+  if (self._recalcTimer) return
+  self._recalcTimer = setTimeout(function () {
+    self._recalc()
+    self._recalcTimer = null
+  }, Math.min(2000, 200 + this._recalcTime))
 }
 
 P.prototype._loadQuery = async function loadQuery(bbox, q) {
+  var self = this
   var row, buffers = []
-  this._buffers.push({ bbox, buffers })
+  var index = ++self._lastQueryIndex
+  self._queryOpen[index] = true
+  self._buffers.push({ bbox, buffers, index })
   while (row = await q.next()) {
+    if (self._queryCanceled[index]) return
     buffers.push(Buffer.from(row[1]))
-    this._bufferSize++
+    self._bufferSize++
+    self._scheduleRecalc()
   }
-  this._recalc()
+  delete self._queryOpen[index]
+  self._recalc()
 }
 
 P.prototype._recalc = function() {
+  var start = performance.now()
   // todo: compare all-in-one props against pushing more props
   var buffers = new Array(this._bufferSize)
   for (var i = 0, j = 0; i < this._buffers.length; i++) {
@@ -84,17 +111,15 @@ P.prototype._recalc = function() {
       buffers[j++] = bs[k]
     }
   }
+  // todo: cache the decode and recombine?
   var zoom = Math.round(this._map.getZoom())
-  var start = performance.now()
   this._geodata = prepare({
     stylePixels: this._stylePixels,
     styleTexture: this._styleTexture,
     decoded: decode(buffers),
   })
-  //console.log(`prepare in ${performance.now() - start} ms`)
-  var start = performance.now()
   this._update(zoom)
-  //console.log(`update in ${performance.now() - start} ms`)
+  this._recalcTime = performance.now() - start
 }
 
 P.prototype._update = function(zoom) {
@@ -114,3 +139,34 @@ function setProps(dst, src) {
   if (dst.length === 0) dst.push({})
   Object.assign(dst[0],src)
 }
+
+P.prototype.pick = function (opts, cb) {
+  var self = this
+  if (!cb) cb = noop
+  map.pick(opts, function (err, data) {
+    if (err) return cb(err)
+    if (feq(data[0],0.0)) {
+      cb(null, { id: null, type: null })
+    } else if (Math.floor(data[2]/2) === 0 && data[2]%2 < 0.9999) {
+      cb(null, { id: self.draw.pointT.props[0].indexToId[data[0]], type: data[1] })
+    } else if (Math.floor(data[2]/2) === 0) {
+      cb(null, { id: self.draw.point.props[0].indexToId[data[0]], type: data[1] })
+    } else if (Math.floor(data[2]/2) === 1 && data[2]%2 < 0.9999) {
+      cb(null, { id: self.draw.lineFillT.props[0].indexToId[data[0]], type: data[1] })
+    } else if (Math.floor(data[2]/2) === 1) {
+      cb(null, { id: self.draw.lineFill.props[0].indexToId[data[0]], type: data[1] })
+    } else if (Math.floor(data[2]/2) === 2 && data[2]%2 < 0.9999) {
+      //cb(null, { id: self.draw.areaT.props[0].indexToId[data[0]], type: data[1] })
+      cb(null, { id: self.draw.area.props[0].indexToId[data[0]], type: data[1] })
+    } else if (Math.floor(data[2]/2) === 2) {
+      cb(null, { id: self.draw.area.props[0].indexToId[data[0]], type: data[1] })
+    } else {
+      cb(null, { id: null, type: null })
+    }
+  })
+}
+
+function feq(a,b,epsilon) {
+  return Math.abs(a-b) < (epsilon === undefined ? 1e-6 : epsilon)
+}
+function noop() {}
