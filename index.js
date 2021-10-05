@@ -1,6 +1,7 @@
 var decode = require('georender-pack/decode')
 var prepare = require('mixmap-georender/prepare')
 var shaders = require('mixmap-georender')
+var geotext = require('mixmap-georender/text')
 var planner = require('viewbox-query-planner')
 var getImagePixels = require('get-image-pixels')
 var bboxIntersect = require('bbox-intersect')
@@ -22,9 +23,11 @@ function P(opts) {
     lineFillT: self._map.createDraw(geoRender.lineFill),
     point: self._map.createDraw(geoRender.points),
     pointT: self._map.createDraw(geoRender.points),
+    label: self._map.createDraw(geoRender.labels),
   }
   self._zoom = -1
   self._geodata = null
+  self._geotext = geotext()
   self.layer = self._map.addLayer({
     viewbox: function (bbox, zoom, cb) {
       //var start = performance.now()
@@ -125,13 +128,14 @@ P.prototype._recalc = function() {
 P.prototype._update = function(zoom) {
   if (!this._geodata) return
   var props = this._geodata.update(zoom)
-  setProps(this.draw.point.props, props.pointP)
-  setProps(this.draw.pointT.props, props.pointT)
+  //setProps(this.draw.point.props, props.pointP)
+  //setProps(this.draw.pointT.props, props.pointT)
   setProps(this.draw.lineFill.props, props.lineP)
   setProps(this.draw.lineStroke.props, props.lineP)
   setProps(this.draw.lineFillT.props, props.lineT)
   setProps(this.draw.lineStrokeT.props, props.lineT)
   setProps(this.draw.area.props, props.area)
+  setProps(this.draw.label.props, this._geotext.update(props, this._map))
   this._map.draw()
 }
 
