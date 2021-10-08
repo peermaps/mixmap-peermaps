@@ -27,6 +27,7 @@ function P(opts) {
   }
   self._zoom = -1
   self._geodata = null
+  self._props = null
   self._geotext = geotext()
   self.layer = self._map.addLayer({
     viewbox: function (bbox, zoom, cb) {
@@ -60,7 +61,7 @@ function P(opts) {
           .catch(e => self._error(e))
       })
       //console.log(`viewbox in ${performance.now()-start} ms`)
-      if (self._zoom !== zoom) self._update(zoom)
+      self._update(zoom)
       self._zoom = zoom
     },
   })
@@ -127,7 +128,12 @@ P.prototype._recalc = function() {
 
 P.prototype._update = function(zoom) {
   if (!this._geodata) return
-  var props = this._geodata.update(zoom)
+  if (this._zoom !== zoom) {
+    var props = this._geodata.update(zoom)
+    this._props = props
+  } else {
+    var props = this._props
+  }
   //setProps(this.draw.point.props, props.pointP)
   //setProps(this.draw.pointT.props, props.pointT)
   setProps(this.draw.lineFill.props, props.lineP)

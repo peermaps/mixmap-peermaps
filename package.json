@@ -11,5 +11,9 @@
     "get-image-pixels": "^1.0.1",
     "mixmap-georender": "^2.0.0",
     "viewbox-query-planner": "^1.0.0"
+  },
+  "scripts": {
+    "prepare": "cp node_modules/eyros/2d.wasm example/eyros2d.wasm",
+    "example": "budo example/map.js -d example"
   }
 }
