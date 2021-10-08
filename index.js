@@ -35,7 +35,7 @@ function P(opts) {
       var culling = 0
       for (var i = 0; i < self._buffers.length; i++) {
         var b = self._buffers[i]
-        if (bboxIntersect(bbox, b.bbox)) {
+        if (!bboxIntersect(bbox, b.bbox)) {
           culling++
           if (self._queryOpen[b.index]) {
             self._queryCanceled[b.index] = true
