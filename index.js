@@ -35,33 +35,7 @@ function P(opts) {
     viewbox: function (bbox, zoom, cb) {
       //var start = performance.now()
       // cull boxes that no longer overlap
-      var culling = 0
-      for (var i = 0; i < self._buffers.length; i++) {
-        var b = self._buffers[i]
-        if (!bboxIntersect(bbox, b.bbox)) {
-          culling++
-          if (self._queryOpen[b.index]) {
-            self._queryCanceled[b.index] = true
-            delete self._queryOpen[b.index]
-          }
-          self._plan.subtract(b.bbox)
-          self._bufferSize -= b.buffers.length
-          self._buffers[i] = null
-        }
-      }
-      if (self._storage && self._storage.cancel && self._storage.activeRequests) {
-        for (var file of self._storage.activeRequests) {
-          var tr = self._trace[file]
-          if (!tr) continue
-          if (!bboxIntersect(bbox, tr.bbox)) {
-            console.log('cancel',file)
-            self._storage.cancel(file)
-          }
-        }
-      }
-      if (culling > 0) {
-        self._buffers = self._buffers.filter(function (b) { return b !== null })
-      }
+      self._cull()
       // add new boxes
       var boxes = self._plan.update(bbox)
       for (var i = 0; i < boxes.length; i++) {
@@ -95,6 +69,37 @@ P.prototype._error = function (err) {
   console.error('CAUGHT', err)
 }
 
+P.prototype._cull = function () {
+  var self = this
+  var culling = 0
+  for (var i = 0; i < self._buffers.length; i++) {
+    var b = self._buffers[i]
+    if (!bboxIntersect(self._map.viewbox, b.bbox)) {
+      culling++
+      if (self._queryOpen[b.index]) {
+        self._queryCanceled[b.index] = true
+        delete self._queryOpen[b.index]
+      }
+      self._plan.subtract(b.bbox)
+      self._bufferSize -= b.buffers.length
+      self._buffers[i] = null
+    }
+  }
+  if (self._storage && self._storage.cancel && self._storage.activeRequests) {
+    for (var file of self._storage.activeRequests) {
+      var tr = self._trace[file]
+      if (!tr) continue
+      if (!bboxIntersect(self._map.viewbox, tr.bbox)) {
+        console.log('cancel',file)
+        self._storage.cancel(file)
+      }
+    }
+  }
+  if (culling > 0) {
+    self._buffers = self._buffers.filter(function (b) { return b !== null })
+  }
+}
+
 P.prototype._scheduleRecalc = function () {
   var self = this
   if (self._recalcTimer) return
@@ -126,6 +131,7 @@ P.prototype._loadQuery = async function loadQuery(bbox, q) {
 P.prototype._recalc = function() {
   var start = performance.now()
   // todo: compare all-in-one props against pushing more props
+  this._cull()
   var buffers = new Array(this._bufferSize)
   for (var i = 0, j = 0; i < this._buffers.length; i++) {
     var bs = this._buffers[i].buffers
@@ -146,12 +152,7 @@ P.prototype._recalc = function() {
 
 P.prototype._update = function(zoom) {
   if (!this._geodata) return
-  if (this._zoom !== zoom) {
-    var props = this._geodata.update(zoom)
-    this._props = props
-  } else {
-    var props = this._props
-  }
+  var props = this._geodata.update(zoom)
   //setProps(this.draw.point.props, props.pointP)
   //setProps(this.draw.pointT.props, props.pointT)
   setProps(this.draw.lineFill.props, props.lineP)
