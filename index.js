@@ -12,6 +12,7 @@ function P(opts) {
   if (!(self instanceof P)) return new P(opts)
   self._map = opts.map
   self._db = opts.db
+  self._storage = opts.storage
   self._stylePixels = getImagePixels(opts.style),
   self._styleTexture = self._map.regl.texture(opts.style)
   var geoRender = shaders(self._map)
@@ -29,6 +30,7 @@ function P(opts) {
   self._geodata = null
   self._props = null
   self._geotext = geotext()
+  self._trace = {}
   self.layer = self._map.addLayer({
     viewbox: function (bbox, zoom, cb) {
       //var start = performance.now()
@@ -47,6 +49,16 @@ function P(opts) {
           self._buffers[i] = null
         }
       }
+      if (self._storage && self._storage.cancel && self._storage.activeRequests) {
+        for (var file of self._storage.activeRequests) {
+          var tr = self._trace[file]
+          if (!tr) continue
+          if (!bboxIntersect(bbox, tr.bbox)) {
+            console.log('cancel',file)
+            self._storage.cancel(file)
+          }
+        }
+      }
       if (culling > 0) {
         self._buffers = self._buffers.filter(function (b) { return b !== null })
       }
@@ -56,9 +68,12 @@ function P(opts) {
         self._plan.add(boxes[i])
       }
       boxes.forEach(bbox => {
-        self._db.query(bbox)
+        self._db.query(bbox, { trace })
           .then(q => self._loadQuery(bbox, q))
           .catch(e => self._error(e))
+        function trace(tr) {
+          self._trace[tr.file] = tr
+        }
       })
       //console.log(`viewbox in ${performance.now()-start} ms`)
       self._update(zoom)
@@ -96,7 +111,10 @@ P.prototype._loadQuery = async function loadQuery(bbox, q) {
   self._queryOpen[index] = true
   self._buffers.push({ bbox, buffers, index })
   while (row = await q.next()) {
-    if (self._queryCanceled[index]) return
+    if (self._queryCanceled[index]) {
+      self._recalc()
+      return
+    }
     buffers.push(Buffer.from(row[1]))
     self._bufferSize++
     self._scheduleRecalc()
