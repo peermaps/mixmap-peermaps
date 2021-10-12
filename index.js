@@ -5,14 +5,26 @@ var geotext = require('mixmap-georender/text')
 var planner = require('viewbox-query-planner')
 var getImagePixels = require('get-image-pixels')
 var bboxIntersect = require('bbox-intersect')
+var wrapHooks = require('./lib/storage-hooks.js')
  
 module.exports = P
 function P(opts) {
   var self = this
   if (!(self instanceof P)) return new P(opts)
   self._map = opts.map
-  self._db = opts.db
-  self._storage = opts.storage
+  self._storage = wrapHooks(opts.storage, {
+    // ...
+  })
+  self._dbQueue = []
+  opts.eyros({ storage: self._storage, wasmSource: opts.wasmSource })
+    .then(db => {
+      self._db = db
+      for (var i = 0; i < self._dbQueue; i++) {
+        self._dbQueue[i](db)
+      }
+      self._dbQueue = null
+    })
+    .catch(err => self._error(err))
   self._stylePixels = getImagePixels(opts.style),
   self._styleTexture = self._map.regl.texture(opts.style)
   var geoRender = shaders(self._map)
@@ -33,25 +45,23 @@ function P(opts) {
   self._trace = {}
   self.layer = self._map.addLayer({
     viewbox: function (bbox, zoom, cb) {
-      //var start = performance.now()
-      // cull boxes that no longer overlap
-      self._cull()
       // add new boxes
       var boxes = self._plan.update(bbox)
       for (var i = 0; i < boxes.length; i++) {
         self._plan.add(boxes[i])
       }
-      boxes.forEach(bbox => {
-        self._db.query(bbox, { trace })
-          .then(q => self._loadQuery(bbox, q))
-          .catch(e => self._error(e))
-        function trace(tr) {
-          self._trace[tr.file] = tr
-        }
-      })
-      //console.log(`viewbox in ${performance.now()-start} ms`)
-      self._update(zoom)
       self._zoom = zoom
+      self._getDb(function () {
+        boxes.forEach(bbox => {
+          self._db.query(bbox, { trace })
+            .then(q => self._loadQuery(bbox, q))
+            .catch(e => self._error(e))
+          function trace(tr) {
+            self._trace[tr.file] = tr
+          }
+        })
+        self._scheduleRecalc()
+      })
     },
   })
   self._plan = planner()
@@ -67,6 +77,12 @@ function P(opts) {
 
 P.prototype._error = function (err) {
   console.error('CAUGHT', err)
+}
+
+P.prototype._getDb = function (cb) {
+  var self = this
+  if (self._db) cb(self._db)
+  else self._dbQueue.push(cb)
 }
 
 P.prototype._cull = function () {
@@ -97,6 +113,11 @@ P.prototype._cull = function () {
   }
   if (culling > 0) {
     self._buffers = self._buffers.filter(function (b) { return b !== null })
+  }
+  //console.log('cull')
+  for (var i = 0; i < self._buffers.length; i++) {
+    var b = self._buffers[i]
+    //console.log(b.buffers.length, b.bbox)
   }
 }
 
@@ -146,12 +167,6 @@ P.prototype._recalc = function() {
     styleTexture: this._styleTexture,
     decoded: decode(buffers),
   })
-  this._update(zoom)
-  this._recalcTime = performance.now() - start
-}
-
-P.prototype._update = function(zoom) {
-  if (!this._geodata) return
   var props = this._geodata.update(zoom)
   //setProps(this.draw.point.props, props.pointP)
   //setProps(this.draw.pointT.props, props.pointT)
@@ -162,6 +177,7 @@ P.prototype._update = function(zoom) {
   setProps(this.draw.area.props, props.area)
   setProps(this.draw.label.props, this._geotext.update(props, this._map))
   this._map.draw()
+  this._recalcTime = performance.now() - start
 }
 
 function setProps(dst, src) {

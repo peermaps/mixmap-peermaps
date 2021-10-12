@@ -37,12 +37,7 @@ resl({
     wasmSource: { type: 'binary', src: 'eyros2d.wasm' },
   },
   onDone: async function({ style, wasmSource }) {
-    var db = await eyros({
-      storage,
-      wasmSource,
-      //debug: function (msg) { console.log("[debug]", msg) }
-    })
-    var pm = peermapsMixmap({ map, db, storage, style })
+    var pm = peermapsMixmap({ map, eyros, storage, wasmSource, style })
     window.addEventListener('click', function (ev) {
       pm.pick({ x: ev.offsetX, y: ev.offsetY }, function (err, data) {
         console.log('pick', err, data)
