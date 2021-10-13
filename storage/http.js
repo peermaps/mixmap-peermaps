@@ -27,7 +27,9 @@ module.exports = function (root) {
             data = d
             cb(null, data.length)
           })
-        } else cb(null, data.length)
+        } else {
+          cb(null, data.length)
+        }
       },
       read: function f (offset, length, cb) {
         if (data === null) {
@@ -69,10 +71,7 @@ module.exports = function (root) {
       rx += data.length
     } catch (err) {
       if (controllers[name] !== null) {
-        queue.push({ name, cb })
-        setTimeout(next, 1_000)
-      } else {
-        console.error(err)
+        console.error(name, err)
       }
     }
     clearTimeout(to)
@@ -91,6 +90,10 @@ module.exports = function (root) {
       }
       if (found) queue = queue.filter(q => q.name !== name)
       //console.log((rx/1024/1024).toFixed(1) + ' M')
+    } else if (controllers[name] !== null) {
+      queue.push({ name, cb })
+      setTimeout(next, 1_000)
+      return
     }
     pending--
     if (queue.length > 0 && pending < connectionLimit) {

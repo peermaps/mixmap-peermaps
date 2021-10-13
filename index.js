@@ -116,11 +116,6 @@ P.prototype._cull = function () {
   if (culling > 0) {
     self._buffers = self._buffers.filter(function (b) { return b !== null })
   }
-  //console.log('cull')
-  for (var i = 0; i < self._buffers.length; i++) {
-    var b = self._buffers[i]
-    //console.log(b.buffers.length, b.bbox)
-  }
 }
 
 P.prototype._scheduleRecalc = function () {
