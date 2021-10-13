@@ -32,6 +32,7 @@ module.exports = function (root) {
       },
     }
     async function getData (f, ...args) {
+      console.log('get',name)
       if (controllers[name] === null) { // cancelled request
         storageFn.activeRequests.delete(name)
         delete controllers[name]
@@ -47,8 +48,7 @@ module.exports = function (root) {
       var to = setTimeout(function () {
         if (controllers[name]) controllers[name].abort()
         delete controllers[name]
-        getData(f, ...args) // retry
-      }, 15_000)
+      }, 5_000)
       //console.log('open',name)
       storageFn.activeRequests.add(name)
       try {
@@ -67,7 +67,7 @@ module.exports = function (root) {
           }, 5_000)
         }
       }
-      //console.log('close',name)
+      console.log('complete',name)
       clearTimeout(to)
       delete controllers[name]
       if (data) {

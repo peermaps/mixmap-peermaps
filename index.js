@@ -19,7 +19,7 @@ function P(opts) {
   opts.eyros({ storage: self._storage, wasmSource: opts.wasmSource })
     .then(db => {
       self._db = db
-      for (var i = 0; i < self._dbQueue; i++) {
+      for (var i = 0; i < self._dbQueue.length; i++) {
         self._dbQueue[i](db)
       }
       self._dbQueue = null
@@ -44,25 +44,7 @@ function P(opts) {
   self._geotext = geotext()
   self._trace = {}
   self.layer = self._map.addLayer({
-    viewbox: function (bbox, zoom, cb) {
-      // add new boxes
-      var boxes = self._plan.update(bbox)
-      for (var i = 0; i < boxes.length; i++) {
-        self._plan.add(boxes[i])
-      }
-      self._zoom = zoom
-      self._getDb(function () {
-        boxes.forEach(bbox => {
-          self._db.query(bbox, { trace })
-            .then(q => self._loadQuery(bbox, q))
-            .catch(e => self._error(e))
-          function trace(tr) {
-            self._trace[tr.file] = tr
-          }
-        })
-        self._scheduleRecalc()
-      })
-    },
+    viewbox: function (bbox, zoom, cb) { self._onviewbox(bbox,zoom,cb) }
   })
   self._plan = planner()
   self._buffers = []
@@ -77,6 +59,26 @@ function P(opts) {
 
 P.prototype._error = function (err) {
   console.error('CAUGHT', err)
+}
+
+P.prototype._onviewbox = function (bbox, zoom, cb) {
+  var self = this
+  var boxes = self._plan.update(bbox)
+  for (var i = 0; i < boxes.length; i++) {
+    self._plan.add(boxes[i])
+  }
+  self._zoom = zoom
+  self._getDb(function (db) {
+    boxes.forEach(bbox => {
+      db.query(bbox, { trace })
+        .then(q => self._loadQuery(bbox, q))
+        .catch(e => self._error(e))
+      function trace(tr) {
+        self._trace[tr.file] = tr
+      }
+    })
+    self._scheduleRecalc()
+  })
 }
 
 P.prototype._getDb = function (cb) {

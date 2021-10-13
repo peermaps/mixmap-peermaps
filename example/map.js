@@ -3,8 +3,7 @@ var eyros = require('eyros/2d')
 var mixmap = require('mixmap')
 var regl = require('regl')
 var resl = require('resl')
-//var storage = require('../lib/http-storage')
-var storage = require('../lib/http-storage')(
+var storage = require('../storage/http')(
   //'ipfs:/ipfs/QmVCYUK51Miz4jEjJxCq3bA6dfq5FXD6s2EYp6LjHQhGmh'
   //'http://bafybeidf5yn56cxk6zkyjmay4wigu2o7ynqh7q62z3kppag5v7jpqavy5q.ipfs.localhost:8080'
   'https://ipfs.io/ipfs/QmVCYUK51Miz4jEjJxCq3bA6dfq5FXD6s2EYp6LjHQhGmh'
