@@ -3,6 +3,7 @@ var connectionLimit = 6
 
 module.exports = function (root) {
   var controllers = {}
+  var callbacks = {} // store leaked callbacks here so they may be resumed later
   var active = {}
   var queue = []
   var pending = 0
@@ -76,7 +77,7 @@ module.exports = function (root) {
     } catch (err) {
       if (controllers[name] === null) {
         console.log('abort',name)
-        cb(err) // must call to avoid leaking callbacks
+        leak(name, cb)
       } else {
         console.error(name, err)
       }
@@ -96,6 +97,13 @@ module.exports = function (root) {
         }
       }
       if (found) queue = queue.filter(q => q.name !== name)
+      if (callbacks[name]) {
+        for (var i = 0; i < callbacks.length; i++) {
+          try { callbacks[i](null, data) }
+          catch (err) { console.error(err) }
+        }
+        delete callbacks[name]
+      }
       //console.log((rx/1024/1024).toFixed(1) + ' M')
     } else if (controllers[name] !== null) {
       queue.push({ name, cb })
@@ -116,7 +124,7 @@ module.exports = function (root) {
     for (var i = 0; i < queue.length; i++) {
       var q = queue[i]
       if (q.name === name) {
-        q.cb(new Error('connection aborted'))
+        leak(q.name, q.cb)
       }
     }
     queue = queue.filter(q => q.name !== name)
@@ -129,5 +137,9 @@ module.exports = function (root) {
       var q = queue.shift()
       getData(q.name, q.cb)
     }
+  }
+  function leak(name, cb) {
+    if (!callbacks[name]) callbacks[name] = [cb]
+    else callbacks[name].push(cb)
   }
 }
