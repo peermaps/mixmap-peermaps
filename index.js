@@ -5,15 +5,28 @@ var geotext = require('mixmap-georender/text')
 var planner = require('viewbox-query-planner')
 var getImagePixels = require('get-image-pixels')
 var bboxIntersect = require('bbox-intersect')
-var wrapHooks = require('./lib/storage-hooks.js')
+var storageHooks = require('./lib/storage-hooks.js')
  
 module.exports = P
 function P(opts) {
   var self = this
   if (!(self instanceof P)) return new P(opts)
   self._map = opts.map
-  self._storage = wrapHooks(opts.storage, {
-    // ...
+  self._trace = {}
+  self._loading = new Set
+  self._storage = storageHooks(opts.storage, {
+    beforeLength: function (name) {
+      self._loading.add(name)
+    },
+    afterLength: function (name) {
+      self._loading.delete(name)
+    },
+    beforeRead: function (name) {
+      self._loading.add(name)
+    },
+    afterRead: function (name) {
+      self._loading.delete(name)
+    },
   })
   self._dbQueue = []
   opts.eyros({ storage: self._storage, wasmSource: opts.wasmSource })
@@ -42,10 +55,6 @@ function P(opts) {
   self._geodata = null
   self._props = null
   self._geotext = geotext()
-  self._trace = {}
-  self.layer = self._map.addLayer({
-    viewbox: function (bbox, zoom, cb) { self._onviewbox(bbox,zoom,cb) }
-  })
   self._plan = planner()
   self._buffers = []
   self._bufferSize = 0
@@ -55,6 +64,9 @@ function P(opts) {
   self._recalcTimer = null
   self._recalcTime = 0
   self.props = {}
+  self.layer = self._map.addLayer({
+    viewbox: function (bbox, zoom, cb) { self._onviewbox(bbox,zoom,cb) }
+  })
 }
 
 P.prototype._error = function (err) {
@@ -92,6 +104,7 @@ P.prototype._cull = function () {
   var culling = 0
   for (var i = 0; i < self._buffers.length; i++) {
     var b = self._buffers[i]
+    if (b === null) continue
     if (!bboxIntersect(self._map.viewbox, b.bbox)) {
       culling++
       if (self._queryOpen[b.index]) {
@@ -103,14 +116,11 @@ P.prototype._cull = function () {
       self._buffers[i] = null
     }
   }
-  if (self._storage && self._storage.cancel && self._storage.activeRequests) {
-    for (var file of self._storage.activeRequests) {
-      var tr = self._trace[file]
-      if (!tr) continue
-      if (!bboxIntersect(self._map.viewbox, tr.bbox)) {
-        console.log('cancel',file)
-        self._storage.cancel(file)
-      }
+  for (var file of self._loading) {
+    var tr = self._trace[file]
+    if (!tr) continue
+    if (!bboxIntersect(self._map.viewbox, tr.bbox)) {
+      self._storage.destroy(file)
     }
   }
   if (culling > 0) {

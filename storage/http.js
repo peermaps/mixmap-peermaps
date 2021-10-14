@@ -25,8 +25,11 @@ module.exports = function (root) {
         if (data === null) {
           getData(name, function (err, d) {
             data = d
-            cb(null, data.length)
+            if (err) cb(err)
+            else cb(null, data.length)
           })
+        } else if (err) {
+          cb(err)
         } else {
           cb(null, data.length)
         }
@@ -35,7 +38,8 @@ module.exports = function (root) {
         if (data === null) {
           getData(name, function (err, d) {
             data = d
-            if (offset === 0 && length === data.length) {
+            if (err) cb(err)
+            else if (offset === 0 && length === data.length) {
               cb(null, data)
             } else {
               cb(null, data.subarray(offset,offset+length))
@@ -70,7 +74,10 @@ module.exports = function (root) {
       data = Buffer.from(await (await fetch(root + '/' + name, opts)).arrayBuffer())
       rx += data.length
     } catch (err) {
-      if (controllers[name] !== null) {
+      if (controllers[name] === null) {
+        console.log('abort',name)
+        cb(err) // must call to avoid leaking callbacks
+      } else {
         console.error(name, err)
       }
     }
@@ -100,12 +107,20 @@ module.exports = function (root) {
       setTimeout(next, 10)
     }
   }
-  storageFn.cancel = function (name) {
-    queue = queue.filter(q => q.name !== name)
+  storageFn.destroy = function (name, cb) {
+    console.log('destroy',name)
     if (controllers[name]) {
       controllers[name].abort()
     }
     controllers[name] = null
+    for (var i = 0; i < queue.length; i++) {
+      var q = queue[i]
+      if (q.name === name) {
+        q.cb(new Error('connection aborted'))
+      }
+    }
+    queue = queue.filter(q => q.name !== name)
+    if (cb) cb()
   }
   return storageFn
 
