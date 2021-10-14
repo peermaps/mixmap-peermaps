@@ -4,14 +4,14 @@
   "description": "peermaps layer for mixmap",
   "dependencies": {
     "bbox-intersect": "^0.1.2",
-    "georender-pack": "^3.0.0",
+    "georender-pack": "^4.0.0",
     "get-image-pixels": "^1.0.1",
     "mixmap-georender": "^2.0.0",
     "viewbox-query-planner": "^1.0.1"
   },
   "devDependencies": {
     "eyros": "^4.0.2",
-    "georender-style2png": "^2.0.2",
+    "georender-style2png": "^3.0.0",
     "mixmap": "^1.5.2",
     "regl": "^2.1.0",
     "resl": "^1.0.3"

@@ -43,9 +43,12 @@ function P(opts) {
   var geoRender = shaders(self._map)
   self.draw = {
     area: self._map.createDraw(geoRender.areas),
+    areaT: self._map.createDraw(geoRender.areas),
+    areaBorder: self._map.createDraw(geoRender.areaBorders),
+    areaBorderT: self._map.createDraw(geoRender.areaBorders),
     lineStroke: self._map.createDraw(geoRender.lineStroke),
-    lineFill: self._map.createDraw(geoRender.lineFill),
     lineStrokeT: self._map.createDraw(geoRender.lineStroke),
+    lineFill: self._map.createDraw(geoRender.lineFill),
     lineFillT: self._map.createDraw(geoRender.lineFill),
     point: self._map.createDraw(geoRender.points),
     pointT: self._map.createDraw(geoRender.points),
@@ -179,9 +182,12 @@ P.prototype._recalc = function() {
   //setProps(this.draw.pointT.props, props.pointT)
   setProps(this.draw.lineFill.props, props.lineP)
   setProps(this.draw.lineStroke.props, props.lineP)
+  setProps(this.draw.area.props, props.areaP)
+  setProps(this.draw.areaBorder.props, props.areaBorderP)
   setProps(this.draw.lineFillT.props, props.lineT)
   setProps(this.draw.lineStrokeT.props, props.lineT)
-  setProps(this.draw.area.props, props.area)
+  setProps(this.draw.areaT.props, props.areaT)
+  setProps(this.draw.areaBorderT.props, props.areaBorderT)
   setProps(this.draw.label.props, this._geotext.update(props, this._map))
   this._map.draw()
   this._recalcTime = performance.now() - start
