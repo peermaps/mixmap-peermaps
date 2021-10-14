@@ -1,5 +1,5 @@
 var rx = 0
-var connectionLimit = 6
+var connectionLimit = 10
 
 module.exports = function (root) {
   var controllers = {}
@@ -70,7 +70,8 @@ module.exports = function (root) {
     var to = setTimeout(function () {
       if (controllers[name]) controllers[name].abort()
       delete controllers[name]
-    }, 5_000)
+    }, 10_000)
+    var delay = 10
     try {
       data = Buffer.from(await (await fetch(root + '/' + name, opts)).arrayBuffer())
       rx += data.length
@@ -80,6 +81,8 @@ module.exports = function (root) {
         leak(name, cb)
       } else {
         console.error(name, err)
+        queue.push({ name, cb })
+        delay = 5_000
       }
     }
     clearTimeout(to)
@@ -105,14 +108,10 @@ module.exports = function (root) {
         delete callbacks[name]
       }
       //console.log((rx/1024/1024).toFixed(1) + ' M')
-    } else if (controllers[name] !== null) {
-      queue.push({ name, cb })
-      setTimeout(next, 1_000)
-      return
     }
     pending--
     if (queue.length > 0 && pending < connectionLimit) {
-      setTimeout(next, 10)
+      setTimeout(next, delay)
     }
   }
   storageFn.destroy = function (name, cb) {
