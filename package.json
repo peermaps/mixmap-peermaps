@@ -1,4 +1,7 @@
 {
+  "name": "mixmap-peermaps",
+  "version": "1.0.0",
+  "description": "peermaps layer for mixmap",
   "dependencies": {
     "bbox-intersect": "^0.1.2",
     "georender-pack": "^3.0.0",
