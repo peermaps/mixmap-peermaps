@@ -25,9 +25,9 @@ module.exports = function (root) {
       length: function f (cb) {
         if (data === null) {
           getData(name, function (err, d) {
+            if (err) return cb(err)
             data = d
-            if (err) cb(err)
-            else cb(null, data.length)
+            cb(null, data.length)
           })
         } else if (err) {
           cb(err)
@@ -38,17 +38,20 @@ module.exports = function (root) {
       read: function f (offset, length, cb) {
         if (data === null) {
           getData(name, function (err, d) {
-            data = d
             if (err) cb(err)
             else if (offset === 0 && length === data.length) {
+              data = d
               cb(null, data)
             } else {
+              data = d
               cb(null, data.subarray(offset,offset+length))
             }
           })
         } else if (offset === 0 && length === data.length) {
+          data = d
           cb(null, data)
         } else {
+          data = d
           cb(null, data.subarray(offset,offset+length))
         }
       },
