@@ -1,6 +1,6 @@
 {
   "name": "mixmap-peermaps",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "peermaps layer for mixmap",
   "dependencies": {
     "bbox-intersect": "^0.1.2",
