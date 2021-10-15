@@ -2,7 +2,6 @@ var mixmapPeermaps = require('../')
 var eyros = require('eyros/2d')
 var mixmap = require('mixmap')
 var regl = require('regl')
-var resl = require('resl')
 var storage = require('../storage/http')(
   'https://ipfs.io/ipfs/QmVCYUK51Miz4jEjJxCq3bA6dfq5FXD6s2EYp6LjHQhGmh'
 )
@@ -16,19 +15,21 @@ var map = mix.create({
   pickfb: { colorFormat: 'rgba', colorType: 'float32' }
 })
 
-resl({
-  manifest: {
-    style: { type: 'image', src: 'style.png' },
-    wasmSource: { type: 'binary', src: 'eyros2d.wasm' },
-  },
-  onDone: async function({ style, wasmSource }) {
-    var pm = mixmapPeermaps({ map, eyros, storage, wasmSource, style })
-    window.addEventListener('click', function (ev) {
-      pm.pick({ x: ev.offsetX, y: ev.offsetY }, function (err, data) {
-        console.log('pick', err, data)
-      })
-    })
-  }
+var pm = mixmapPeermaps({
+  map,
+  eyros,
+  storage,
+  wasmSource,
+  style: (function () {
+    var style = new Image
+    style.src = 'style.png'
+    return style
+  })()
+})
+window.addEventListener('click', function (ev) {
+  pm.pick({ x: ev.offsetX, y: ev.offsetY }, function (err, data) {
+    console.log('pick', err, data)
+  })
 })
 
 window.addEventListener('keydown', function (ev) {

@@ -10,11 +10,10 @@
     "viewbox-query-planner": "^1.0.1"
   },
   "devDependencies": {
-    "eyros": "^4.0.2",
+    "eyros": "^4.7.0",
     "georender-style2png": "^3.0.0",
     "mixmap": "^1.5.2",
-    "regl": "^2.1.0",
-    "resl": "^1.0.3"
+    "regl": "^2.1.0"
   },
   "scripts": {
     "start": "npm run prepare && npm run style && npm run example",

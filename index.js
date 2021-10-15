@@ -38,8 +38,31 @@ function P(opts) {
       self._dbQueue = null
     })
     .catch(err => self._error(err))
-  self._stylePixels = getImagePixels(opts.style),
-  self._styleTexture = self._map.regl.texture(opts.style)
+
+  self._stylePixels = null
+  self._styleTexture = null
+  self._styleQueue = null
+  if (!opts.style) {
+    throw new Error('opts.style must be an Image or { width, height, data } object')
+  } else if (opts.style.data) { // pass through data directly
+    self._stylePixels = opts.style.data
+    self._styleTexture = self._map.regl.texture(opts.style)
+  } else if (opts.style.complete) { // img loaded
+    self._stylePixels = getImagePixels(opts.style),
+    self._styleTexture = self._map.regl.texture(opts.style)
+  } else if (opts.style.addEventListener) {
+    self._styleQueue = []
+    opts.style.addEventListener('load', function (ev) {
+      self._stylePixels = getImagePixels(opts.style),
+      self._styleTexture = self._map.regl.texture(opts.style)
+      for (var i = 0; i < self._styleQueue.length; i++) {
+        self._styleQueue[i]()
+      }
+      self._styleQueue = null
+    })
+  } else {
+    throw new Error('unexpected opts.style value. expected Image or { width, height, data } object')
+  }
   var geoRender = shaders(self._map)
   self.draw = {
     area: self._map.createDraw(geoRender.areas),
@@ -102,6 +125,15 @@ P.prototype._getDb = function (cb) {
   else self._dbQueue.push(cb)
 }
 
+P.prototype._getStyle = function (cb) {
+  if (this._stylePixels && this._styleTexture) {
+    cb(this._stylePixels, this._styleTexture)
+  } else {
+    if (!this._styleQueue) this._styleQueue = []
+    this._styleQueue.push(cb)
+  }
+}
+
 P.prototype._cull = function () {
   var self = this
   var culling = 0
@@ -160,37 +192,40 @@ P.prototype._loadQuery = async function loadQuery(bbox, q) {
 }
 
 P.prototype._recalc = function() {
-  var start = performance.now()
-  // todo: compare all-in-one props against pushing more props
-  this._cull()
-  var buffers = new Array(this._bufferSize)
-  for (var i = 0, j = 0; i < this._buffers.length; i++) {
-    var bs = this._buffers[i].buffers
-    for (var k = 0; k < bs.length; k++) {
-      buffers[j++] = bs[k]
+  var self = this
+  self._getStyle(function (stylePixels, styleTexture) {
+    var start = performance.now()
+    // todo: compare all-in-one props against pushing more props
+    self._cull()
+    var buffers = new Array(self._bufferSize)
+    for (var i = 0, j = 0; i < self._buffers.length; i++) {
+      var bs = self._buffers[i].buffers
+      for (var k = 0; k < bs.length; k++) {
+        buffers[j++] = bs[k]
+      }
     }
-  }
-  // todo: cache the decode and recombine?
-  var zoom = Math.round(this._map.getZoom())
-  this._geodata = prepare({
-    stylePixels: this._stylePixels,
-    styleTexture: this._styleTexture,
-    decoded: decode(buffers),
+    // todo: cache the decode and recombine?
+    var zoom = Math.round(self._map.getZoom())
+    self._geodata = prepare({
+      stylePixels: self._stylePixels,
+      styleTexture: self._styleTexture,
+      decoded: decode(buffers),
+    })
+    var props = self._geodata.update(zoom)
+    //setProps(self.draw.point.props, props.pointP)
+    //setProps(self.draw.pointT.props, props.pointT)
+    setProps(self.draw.lineFill.props, props.lineP)
+    setProps(self.draw.lineStroke.props, props.lineP)
+    setProps(self.draw.area.props, props.areaP)
+    setProps(self.draw.areaBorder.props, props.areaBorderP)
+    setProps(self.draw.lineFillT.props, props.lineT)
+    setProps(self.draw.lineStrokeT.props, props.lineT)
+    setProps(self.draw.areaT.props, props.areaT)
+    setProps(self.draw.areaBorderT.props, props.areaBorderT)
+    setProps(self.draw.label.props, self._geotext.update(props, self._map))
+    self._map.draw()
+    self._recalcTime = performance.now() - start
   })
-  var props = this._geodata.update(zoom)
-  //setProps(this.draw.point.props, props.pointP)
-  //setProps(this.draw.pointT.props, props.pointT)
-  setProps(this.draw.lineFill.props, props.lineP)
-  setProps(this.draw.lineStroke.props, props.lineP)
-  setProps(this.draw.area.props, props.areaP)
-  setProps(this.draw.areaBorder.props, props.areaBorderP)
-  setProps(this.draw.lineFillT.props, props.lineT)
-  setProps(this.draw.lineStrokeT.props, props.lineT)
-  setProps(this.draw.areaT.props, props.areaT)
-  setProps(this.draw.areaBorderT.props, props.areaBorderT)
-  setProps(this.draw.label.props, this._geotext.update(props, this._map))
-  this._map.draw()
-  this._recalcTime = performance.now() - start
 }
 
 function setProps(dst, src) {
