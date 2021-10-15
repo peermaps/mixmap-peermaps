@@ -48,10 +48,8 @@ module.exports = function (root) {
             }
           })
         } else if (offset === 0 && length === data.length) {
-          data = d
           cb(null, data)
         } else {
-          data = d
           cb(null, data.subarray(offset,offset+length))
         }
       },
@@ -75,6 +73,7 @@ module.exports = function (root) {
       delete controllers[name]
     }, 10_000)
     var delay = 10
+    var data = null
     try {
       data = Buffer.from(await (await fetch(root + '/' + name, opts)).arrayBuffer())
       rx += data.length
