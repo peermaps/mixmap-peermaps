@@ -236,7 +236,7 @@ function setProps(dst, src) {
 P.prototype.pick = function (opts, cb) {
   var self = this
   if (!cb) cb = noop
-  map.pick(opts, function (err, data) {
+  this._map.pick(opts, function (err, data) {
     if (err) return cb(err)
     if (feq(data[0],0.0)) {
       cb(null, { id: null, type: null })
