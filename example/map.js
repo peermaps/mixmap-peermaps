@@ -19,7 +19,7 @@ var pm = mixmapPeermaps({
   map,
   eyros,
   storage,
-  wasmSource,
+  wasmSource: fetch('eyros2d.wasm'),
   style: (function () {
     var style = new Image
     style.src = 'style.png'

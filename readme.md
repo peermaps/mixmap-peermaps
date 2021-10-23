@@ -26,7 +26,7 @@ var pm = mixmapPeermaps({
   map,
   eyros,
   storage,
-  wasmSource,
+  wasmSource: fetch('eyros2d.wasm'),
   style: (function () {
     var style = new Image
     style.src = 'style.png'
@@ -59,6 +59,8 @@ document.body.style.overflow = 'hidden'
 document.body.appendChild(mix.render())
 document.body.appendChild(map.render({ width: window.innerWidth, height: window.innerHeight }))
 ```
+
+make sure to copy `node_modules/eyros/2d.wasm` to eyros2d.wasm
 
 # api
 
