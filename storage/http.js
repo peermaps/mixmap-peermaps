@@ -29,8 +29,6 @@ module.exports = function (root) {
             data = d
             cb(null, data.length)
           })
-        } else if (err) {
-          cb(err)
         } else {
           cb(null, data.length)
         }
@@ -55,6 +53,14 @@ module.exports = function (root) {
       },
     }
   }
+
+  storageFn.getRootUrl = function () {
+    return root
+  }
+  storageFn.setRootUrl = function (url) {
+    root = url
+  }
+
   async function getData(name, cb) {
     if (active[name] || pending >= connectionLimit) {
       queue.push({ name, cb })
