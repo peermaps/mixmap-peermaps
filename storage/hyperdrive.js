@@ -29,15 +29,16 @@ module.exports = function (url, opts) {
     swarm.join(drive.discoveryKey)
   })
   swarm.on('connection', function (socket, info) {
-    console.log('replicate starting with peer', info.host)
+    var peer = info.peer
+    console.log('replicate starting with peer', peer.host)
     pump(socket, drive.replicate(info.client), socket, function (err) {
       if (err) console.log('hyperdrive: pump ERROR', err.message)
     })
     if (debug) socket.on('data', function (data) {
-      console.log('hyperdrive: data from peer', info.host, data)
+      console.log('hyperdrive: data from peer', peer.host, data)
     })
     socket.on('error', function (err) {
-      console.log('hyperdrive: stream ERROR for peer', info.host, err.message)
+      console.log('hyperdrive: stream ERROR for peer', peer.host, err.message)
     })
     if (!isOpen) open()
   })
