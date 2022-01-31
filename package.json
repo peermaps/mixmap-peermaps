@@ -6,7 +6,10 @@
     "bbox-intersect": "^0.1.2",
     "georender-pack": "^4.0.0",
     "get-image-pixels": "^1.0.1",
+    "hyperdrive": "^10.21.0",
+    "hyperswarm-web": "^2.1.1",
     "mixmap-georender": "^3.0.0",
+    "random-access-memory": "^4.0.0",
     "viewbox-query-planner": "^1.0.1"
   },
   "devDependencies": {
