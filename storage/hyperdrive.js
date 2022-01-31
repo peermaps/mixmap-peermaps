@@ -6,8 +6,8 @@ var hyperswarm = require('hyperswarm-web')
 var RAM = require('random-access-memory')
 var pump = require('pump')
 
-module.exports = function (key) {
-  key = key.replace(/^hyper:[\/]*/,'')
+module.exports = function (url) {
+  var key = url.replace(/^hyper:[\/]*/,'')
   var drive = new Hyperdrive(RAM, key)
   var isOpen = false
   var openQueue = []
@@ -71,6 +71,12 @@ module.exports = function (key) {
         })
       },
     }
+  }
+  storageFn.getRootUrl = function () {
+    return url
+  }
+  storageFn.setRootUrl = function (url) {
+    // no op - changing url on a hyperdrive storage doesn't make sense
   }
   storageFn.destroy = function (name, cb) {
     console.log('destroy',name)
