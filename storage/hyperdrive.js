@@ -61,7 +61,7 @@ module.exports = function (url, opts) {
           return openQueue.push(function () { f(cb) })
         }
         drive.stat(name, { wait: true }, function (err, stat) {
-          console.log('LENGTH',name,err&&err.message,stat)
+          if (debug) console.log('LENGTH',name,err&&err.message,stat)
           if (err) retry(function () { f(cb) })
           else cb(null, stat.size)
         })
@@ -71,12 +71,12 @@ module.exports = function (url, opts) {
           return openQueue.push(function () { f(offset, length, cb) })
         }
         drive.open(name, 'r', function g (err, fd) {
-          console.log('OPEN',name,err&&err.message,fd)
+          if (debug) console.log('OPEN',name,err&&err.message,fd)
           if (err) return retry(function () { f(offset, length, cb) })
           var buf = Buffer.alloc(length)
           drive.read(fd, buf, 0, length, offset, function (err) {
             if (err) return retry(function () { g(null, fd) })
-            console.log('READ',name,err)
+            if (debug) console.log('READ',name,err)
             cb(err, buf)
           })
         })
