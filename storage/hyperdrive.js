@@ -23,8 +23,7 @@ module.exports = function (url, opts) {
     }
     openQueue = null
   }
-  var swarmOpts = opts.swarmOpts || DEFAULT_SWARM_OPTS
-  var swarm = hyperswarm(swarmOpts)
+  var swarm = hyperswarm(opts.swarmOpts || DEFAULT_SWARM_OPTS)
   drive.once('ready', function () {
     swarm.join(drive.discoveryKey)
   })
@@ -79,7 +78,7 @@ module.exports = function (url, opts) {
   storageFn.getRootUrl = function () {
     return url
   }
-  storageFn.setRootUrl = function (url) {
+  storageFn.setRootUrl = function () {
     // no op - changing url on a hyperdrive storage doesn't make sense
   }
   storageFn.destroy = function (name, cb) {
