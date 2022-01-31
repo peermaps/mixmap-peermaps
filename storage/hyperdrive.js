@@ -6,7 +6,12 @@ var hyperswarm = require('hyperswarm-web')
 var RAM = require('random-access-memory')
 var pump = require('pump')
 
-module.exports = function (url) {
+var DEFAULT_SWARM_OPTS = {
+  bootstrap: [ 'wss://swarm.cblgh.org' ]
+}
+
+module.exports = function (url, opts) {
+  opts = opts || {}
   var key = url.replace(/^hyper:[\/]*/,'')
   var drive = new Hyperdrive(RAM, key)
   var isOpen = false
@@ -18,11 +23,10 @@ module.exports = function (url) {
     }
     openQueue = null
   }
+  var swarmOpts = opts.swarmOpts || DEFAULT_SWARM_OPTS
+  var swarm = hyperswarm(swarmOpts)
   drive.once('ready', function () {
     swarm.join(drive.discoveryKey)
-  })
-  var swarm = hyperswarm({
-    bootstrap: [ 'wss://swarm.cblgh.org' ],
   })
   swarm.on('connection', function (socket, info) {
     console.log('replicate')
