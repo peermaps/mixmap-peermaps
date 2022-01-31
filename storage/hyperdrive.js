@@ -12,6 +12,7 @@ var DEFAULT_SWARM_OPTS = {
 
 module.exports = function (url, opts) {
   opts = opts || {}
+  var debug = opts.debug || false
   var key = url.replace(/^hyper:[\/]*/,'')
   var drive = new Hyperdrive(RAM, key)
   var isOpen = false
@@ -28,9 +29,15 @@ module.exports = function (url, opts) {
     swarm.join(drive.discoveryKey)
   })
   swarm.on('connection', function (socket, info) {
-    console.log('replicate')
+    console.log('replicate starting with peer', info.host)
     pump(socket, drive.replicate(info.client), socket, function (err) {
-      console.error(err)
+      if (err) console.log('hyperdrive: pump ERROR', err.message)
+    })
+    if (debug) socket.on('data', function (data) {
+      console.log('hyperdrive: data from peer', info.host, data)
+    })
+    socket.on('error', function (err) {
+      console.log('hyperdrive: stream ERROR for peer', info.host, err.message)
     })
     if (!isOpen) open()
   })
