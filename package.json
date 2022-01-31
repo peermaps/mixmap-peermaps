@@ -19,8 +19,8 @@
     "regl": "^2.1.0"
   },
   "scripts": {
-    "start": "npm run prepare && npm run style && npm run example",
-    "prepare": "cp node_modules/eyros/2d.wasm example/eyros2d.wasm",
+    "start": "npm run setup && npm run style && npm run example",
+    "setup": "cp node_modules/eyros/2d.wasm example/eyros2d.wasm",
     "example": "budo example/map.js -d example",
     "style": "georender-style2png node_modules/georender-style2png/example/style.json -o example/style.png"
   }
