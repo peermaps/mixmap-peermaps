@@ -29,6 +29,8 @@ function P(opts) {
     },
   })
   self._dbQueue = []
+  self._idCount = new Map
+  self._bufCounted = new Set
   opts.eyros({ storage: self._storage, wasmSource: opts.wasmSource })
     .then(db => {
       self._db = db
@@ -82,8 +84,7 @@ function P(opts) {
   self._props = null
   self._geotext = geotext()
   self._plan = planner()
-  self._buffers = []
-  self._bufferSize = 0
+  self._decoded = []
   self._lastQueryIndex = -1
   self._queryCanceled = {}
   self._queryOpen = {}
@@ -137,18 +138,17 @@ P.prototype._getStyle = function (cb) {
 P.prototype._cull = function () {
   var self = this
   var culling = 0
-  for (var i = 0; i < self._buffers.length; i++) {
-    var b = self._buffers[i]
-    if (b === null) continue
-    if (!bboxIntersect(self._map.viewbox, b.bbox)) {
+  for (var i = 0; i < self._decoded.length; i++) {
+    var d = self._decoded[i]
+    if (d === null) continue
+    if (!bboxIntersect(self._map.viewbox, d.bbox)) {
       culling++
-      if (self._queryOpen[b.index]) {
-        self._queryCanceled[b.index] = true
-        delete self._queryOpen[b.index]
+      if (self._queryOpen[d.index]) {
+        self._queryCanceled[d.index] = true
+        delete self._queryOpen[d.index]
       }
-      self._plan.subtract(b.bbox)
-      self._bufferSize -= b.buffers.length
-      self._buffers[i] = null
+      self._plan.subtract(d.bbox)
+      self._decoded[i] = null
     }
   }
   for (var file of self._loading) {
@@ -159,7 +159,8 @@ P.prototype._cull = function () {
     }
   }
   if (culling > 0) {
-    self._buffers = self._buffers.filter(function (b) { return b !== null })
+    self._decodedCache = null
+    self._decoded = self._decoded.filter(function (d) { return d !== null })
   }
 }
 
@@ -174,17 +175,17 @@ P.prototype._scheduleRecalc = function () {
 
 P.prototype._loadQuery = async function loadQuery(bbox, q) {
   var self = this
-  var row, buffers = []
+  var row, decoded = []
   var index = ++self._lastQueryIndex
   self._queryOpen[index] = true
-  self._buffers.push({ bbox, buffers, index })
+  self._decoded.push({ bbox, decoded, index })
   while (row = await q.next()) {
     if (self._queryCanceled[index]) {
       self._recalc()
       return
     }
-    buffers.push(Buffer.from(row[1]))
-    self._bufferSize++
+    decoded.push(decode([Buffer.from(row[1])]))
+    self._decodedCache = null
     self._scheduleRecalc()
   }
   delete self._queryOpen[index]
@@ -197,19 +198,11 @@ P.prototype._recalc = function() {
     var start = performance.now()
     // todo: compare all-in-one props against pushing more props
     self._cull()
-    var buffers = new Array(self._bufferSize)
-    for (var i = 0, j = 0; i < self._buffers.length; i++) {
-      var bs = self._buffers[i].buffers
-      for (var k = 0; k < bs.length; k++) {
-        buffers[j++] = bs[k]
-      }
-    }
-    // todo: cache the decode and recombine?
     var zoom = Math.round(self._map.getZoom())
     self._geodata = prepare({
       stylePixels: self._stylePixels,
       styleTexture: self._styleTexture,
-      decoded: decode(buffers),
+      decoded: self._getDecoded(),
     })
     var props = self._geodata.update(zoom)
     //setProps(self.draw.point.props, props.pointP)
@@ -226,6 +219,99 @@ P.prototype._recalc = function() {
     self._map.draw()
     self._recalcTime = performance.now() - start
   })
+}
+
+P.prototype._getDecoded = function () {
+  if (this._decodedCache) return this._decodedCache
+  var pointSize = 0, lineSize = 0, areaSize = 0, areaCellSize = 0, areaBorderSize = 0
+  for (var i = 0; i < this._decoded.length; i++) {
+    var ds = this._decoded[i].decoded
+    for (var j = 0; j < ds.length; j++) {
+      var d = ds[j]
+      pointSize += d.point.ids.length
+      lineSize += d.line.ids.length
+      areaSize += d.area.ids.length
+      areaCellSize += d.area.cells.length
+      areaBorderSize += d.areaBorder.ids.length
+    }
+  }
+  var decoded = {
+    point: {
+      ids: Array(pointSize).fill(0),
+      types: new Float32Array(pointSize),
+      positions: new Float32Array(pointSize*2),
+      labels: {},
+    },
+    line: {
+      ids: Array(lineSize).fill(0),
+      types: new Float32Array(lineSize),
+      positions: new Float32Array(lineSize*2),
+      normals: new Float32Array(lineSize*2),
+      labels: {},
+    },
+    area: {
+      ids: Array(areaSize).fill(0),
+      types: new Float32Array(areaSize),
+      positions: new Float32Array(areaSize*2),
+      cells: new Uint32Array(areaCellSize),
+      labels: {},
+    },
+    areaBorder: {
+      ids: Array(areaBorderSize).fill(0),
+      types: new Float32Array(areaBorderSize),
+      positions: new Float32Array(areaBorderSize*2),
+      normals: new Float32Array(areaBorderSize*2),
+      labels: {},
+    },
+  }
+  var pointOffset = 0, lineOffset = 0, areaOffset = 0, areaCellOffset = 0, areaBorderOffset = 0
+  for (var i = 0; i < this._decoded.length; i++) {
+    var ds = this._decoded[i].decoded
+    for (var j = 0; j < ds.length; j++) {
+      var d = ds[j]
+      for (var k = 0; k < d.point.ids.length; k++) {
+        decoded.point.ids[pointOffset] = d.point.ids[k]
+        decoded.point.types[pointOffset] = d.point.types[k]
+        decoded.point.positions[pointOffset*2+0] = d.point.positions[k*2+0]
+        decoded.point.positions[pointOffset*2+1] = d.point.positions[k*2+1]
+        pointOffset++
+      }
+      Object.assign(decoded.point.labels, d.point.labels)
+      for (var k = 0; k < d.line.ids.length; k++) {
+        decoded.line.ids[lineOffset] = d.line.ids[k]
+        decoded.line.types[lineOffset] = d.line.types[k]
+        decoded.line.positions[lineOffset*2+0] = d.line.positions[k*2+0]
+        decoded.line.positions[lineOffset*2+1] = d.line.positions[k*2+1]
+        decoded.line.normals[lineOffset*2+0] = d.line.normals[k*2+0]
+        decoded.line.normals[lineOffset*2+1] = d.line.normals[k*2+1]
+        lineOffset++
+      }
+      Object.assign(decoded.line.labels, d.line.labels)
+      for (var k = 0; k < d.area.cells.length; k++) {
+        decoded.area.cells[areaCellOffset++] = d.area.cells[k] + areaOffset
+      }
+      for (var k = 0; k < d.area.ids.length; k++) {
+        decoded.area.ids[areaOffset] = d.area.ids[k]
+        decoded.area.types[areaOffset] = d.area.types[k]
+        decoded.area.positions[areaOffset*2+0] = d.area.positions[k*2+0]
+        decoded.area.positions[areaOffset*2+1] = d.area.positions[k*2+1]
+        areaOffset++
+      }
+      Object.assign(decoded.area.labels, d.area.labels)
+      for (var k = 0; k < d.areaBorder.ids.length; k++) {
+        decoded.areaBorder.ids[areaBorderOffset] = d.areaBorder.ids[k]
+        decoded.areaBorder.types[areaBorderOffset] = d.areaBorder.types[k]
+        decoded.areaBorder.positions[areaBorderOffset*2+0] = d.areaBorder.positions[k*2+0]
+        decoded.areaBorder.positions[areaBorderOffset*2+1] = d.areaBorder.positions[k*2+1]
+        decoded.areaBorder.normals[areaBorderOffset*2+0] = d.areaBorder.normals[k*2+0]
+        decoded.areaBorder.normals[areaBorderOffset*2+1] = d.areaBorder.normals[k*2+1]
+        areaBorderOffset++
+      }
+      Object.assign(decoded.areaBorder.labels, d.areaBorder.labels)
+    }
+  }
+  this._decodedCache = decoded
+  return decoded
 }
 
 function setProps(dst, src) {
