@@ -2,8 +2,9 @@ var mixmapPeermaps = require('../')
 var eyros = require('eyros/2d')
 var mixmap = require('mixmap')
 var regl = require('regl')
+var params = new URLSearchParams(location.search)
 var storage = require('../storage/http')(
-  'https://ipfs.io/ipfs/QmVCYUK51Miz4jEjJxCq3bA6dfq5FXD6s2EYp6LjHQhGmh'
+  params.get('data') ?? 'https://ipfs.io/ipfs/QmVCYUK51Miz4jEjJxCq3bA6dfq5FXD6s2EYp6LjHQhGmh'
 )
  
 var mix = mixmap(regl, {
