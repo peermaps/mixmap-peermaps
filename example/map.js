@@ -11,10 +11,14 @@ var mix = mixmap(regl, {
   extensions: [ 'oes_element_index_uint', 'oes_texture_float', 'ext_float_blend' ]
 })
 var map = mix.create({ 
-  viewbox: [7.56, 47.55, 7.58, 47.56], // basel, switzerland
+  //viewbox: [7.56, 47.55, 7.58, 47.56], // basel, switzerland
+  viewbox: params.get('viewbox')
+    ? params.get('viewbox').split(/\s*,\s*/).map(Number)
+    : [7.56, 47.55, 7.58, 47.56], // basel, switzerland
   backgroundColor: [0.82, 0.85, 0.99, 1.0],
   pickfb: { colorFormat: 'rgba', colorType: 'float32' }
 })
+window.map = map
 
 var pm = mixmapPeermaps({
   map,

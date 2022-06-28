@@ -230,18 +230,41 @@ P.prototype.pick = function (opts, cb) {
     if (feq(data[0],0.0)) {
       cb(null, { id: null, type: null })
     } else if (Math.floor(data[2]/2) === 0 && data[2]%2 < 0.9999) {
-      cb(null, { id: self.draw.pointT.props[0].indexToId[data[0]], type: data[1] })
+      if (self.draw.pointT.props.length === 0) {
+        cb(null, { id: null, type: null })
+      } else {
+        cb(null, { id: self.draw.pointT.props[0].indexToId[data[0]], type: data[1] })
+      }
     } else if (Math.floor(data[2]/2) === 0) {
-      cb(null, { id: self.draw.point.props[0].indexToId[data[0]], type: data[1] })
+      if (self.draw.point.props.length === 0) {
+        cb(null, { id: null, type: null })
+      } else {
+        cb(null, { id: self.draw.point.props[0].indexToId[data[0]], type: data[1] })
+      }
     } else if (Math.floor(data[2]/2) === 1 && data[2]%2 < 0.9999) {
-      cb(null, { id: self.draw.lineFillT.props[0].indexToId[data[0]], type: data[1] })
+      if (self.draw.lineFillT.props.length === 0) {
+        cb(null, { id: null, type: null })
+      } else {
+        cb(null, { id: self.draw.lineFillT.props[0].indexToId[data[0]], type: data[1] })
+      }
     } else if (Math.floor(data[2]/2) === 1) {
-      cb(null, { id: self.draw.lineFill.props[0].indexToId[data[0]], type: data[1] })
+      if (self.draw.lineFill.props.length === 0) {
+        cb(null, { id: null, type: null })
+      } else {
+        cb(null, { id: self.draw.lineFill.props[0].indexToId[data[0]], type: data[1] })
+      }
     } else if (Math.floor(data[2]/2) === 2 && data[2]%2 < 0.9999) {
-      //cb(null, { id: self.draw.areaT.props[0].indexToId[data[0]], type: data[1] })
-      cb(null, { id: self.draw.area.props[0].indexToId[data[0]], type: data[1] })
+      if (self.draw.area.props.length === 0) {
+        cb(null, { id: null, type: null })
+      } else {
+        cb(null, { id: self.draw.area.props[0].indexToId[data[0]], type: data[1] })
+      }
     } else if (Math.floor(data[2]/2) === 2) {
-      cb(null, { id: self.draw.area.props[0].indexToId[data[0]], type: data[1] })
+      if (self.draw.area.props.length === 0) {
+        cb(null, { id: null, type: null })
+      } else {
+        cb(null, { id: self.draw.area.props[0].indexToId[data[0]], type: data[1] })
+      }
     } else {
       cb(null, { id: null, type: null })
     }
