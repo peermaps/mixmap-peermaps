@@ -1,7 +1,9 @@
 var rx = 0
 var connectionLimit = 10
 
-module.exports = function (root) {
+module.exports = function (root, opts) {
+  if (!opts) opts = {}
+  var debug = opts.debug
   var controllers = {}
   var callbacks = {} // store leaked callbacks here so they may be resumed later
   var active = {}
@@ -67,7 +69,7 @@ module.exports = function (root) {
       return
     }
     pending++
-    console.log('get',name,pending,queue.length)
+    if (debug) console.log('get',name,pending,queue.length)
     active[name] = true
     var opts = {}
     if (typeof AbortController !== 'undefined') {
@@ -85,10 +87,10 @@ module.exports = function (root) {
       rx += data.length
     } catch (err) {
       if (controllers[name] === null) {
-        console.log('abort',name)
+        if (debug) console.log('abort',name)
         leak(name, cb)
       } else {
-        console.error(name, err)
+        if (debug) console.error(name, err)
         queue.push({ name, cb })
         delay = 5_000
       }
@@ -98,12 +100,12 @@ module.exports = function (root) {
     delete controllers[name]
     if (data) {
       try { cb(null, data) }
-      catch (err) { console.error(err) }
+      catch (err) { if (debug) console.error(err) }
       var found = false
       for (var i = 0; i < queue.length; i++) {
         if (queue[i].name === name) {
           try { queue[i].cb(null, data) }
-          catch (err) { console.error(err) }
+          catch (err) { if (debug) console.error(err) }
           found = true
         }
       }
@@ -111,11 +113,11 @@ module.exports = function (root) {
       if (callbacks[name]) {
         for (var i = 0; i < callbacks.length; i++) {
           try { callbacks[i](null, data) }
-          catch (err) { console.error(err) }
+          catch (err) { if (debug) console.error(err) }
         }
         delete callbacks[name]
       }
-      //console.log((rx/1024/1024).toFixed(1) + ' M')
+      if (debug) console.log((rx/1024/1024).toFixed(1) + ' M')
     }
     pending--
     if (queue.length > 0 && pending < connectionLimit) {
@@ -123,7 +125,7 @@ module.exports = function (root) {
     }
   }
   storageFn.destroy = function (name, cb) {
-    console.log('destroy',name)
+    if (debug) console.log('destroy',name)
     if (controllers[name]) {
       controllers[name].abort()
     }
