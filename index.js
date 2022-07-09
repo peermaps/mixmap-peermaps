@@ -12,6 +12,9 @@ function P(opts) {
   var self = this
   if (!(self instanceof P)) return new P(opts)
   self._map = opts.map
+  self._map.on('resize', function () {
+    self._scheduleRecalc()
+  })
   self._trace = {}
   self._loading = new Set
   self._storage = storageHooks(opts.storage, {
@@ -65,6 +68,7 @@ function P(opts) {
     throw new Error('unexpected opts.style value. expected Image or { width, height, data } object')
   }
   var geoRender = shaders(self._map)
+  self._geoRender = geoRender
   self.draw = {
     area: self._map.createDraw(geoRender.areas),
     areaT: self._map.createDraw(geoRender.areas),
@@ -76,12 +80,17 @@ function P(opts) {
     lineFillT: self._map.createDraw(geoRender.lineFill),
     point: self._map.createDraw(geoRender.points),
     pointT: self._map.createDraw(geoRender.points),
-    label: self._map.createDraw(geoRender.labels),
+    label: {},
   }
   self._zoom = -1
   self._geodata = null
   self._props = null
-  self._geotext = geotext()
+  self._geotext = null
+  self._font = opts.font
+  self._getFont(function (err, font) {
+    self._geotext = geotext({ font })
+    self._recalc()
+  })
   self._plan = planner()
   self._queryResults = []
   self._lastQueryIndex = -1
@@ -201,17 +210,27 @@ P.prototype._recalc = function() {
       decoded: self._features.getDecoded(),
     })
     var props = self._geodata.update(zoom)
-    //setProps(self.draw.point.props, props.pointP)
-    //setProps(self.draw.pointT.props, props.pointT)
+    setProps(self.draw.point.props, props.pointP)
     setProps(self.draw.lineFill.props, props.lineP)
     setProps(self.draw.lineStroke.props, props.lineP)
     setProps(self.draw.area.props, props.areaP)
     setProps(self.draw.areaBorder.props, props.areaBorderP)
+    setProps(self.draw.pointT.props, props.pointT)
     setProps(self.draw.lineFillT.props, props.lineT)
     setProps(self.draw.lineStrokeT.props, props.lineT)
     setProps(self.draw.areaT.props, props.areaT)
     setProps(self.draw.areaBorderT.props, props.areaBorderT)
-    setProps(self.draw.label.props, self._geotext.update(props, self._map))
+    if (self._geotext) {
+      var textProps = self._geotext.update(props, self._map)
+      var ns = Object.keys(textProps)
+      for (var i = 0; i < ns.length; i++) {
+        var n = ns[i]
+        if (!self.draw.label[n]) {
+          self.draw.label[n] = self._map.createDraw(self._geoRender.labels(n))
+        }
+        setProps(self.draw.label[n].props, textProps[n])
+      }
+    }
     self._map.draw()
     self._recalcTime = performance.now() - start
   })
@@ -220,6 +239,30 @@ P.prototype._recalc = function() {
 function setProps(dst, src) {
   if (dst.length === 0) dst.push({})
   Object.assign(dst[0],src)
+}
+
+P.prototype._getFont = function (cb) {
+  var self = this
+  var r0 = self._font
+  if (typeof self._font === 'function') {
+    r0 = self._font(cb)
+  }
+  if (r0 && typeof r0.then === 'function') {
+    r0.then(r1 => {
+      if (r1 && typeof r1.arrayBuffer === 'function') {
+        var r2 = r1.arrayBuffer()
+        if (r2 && typeof r2.then === 'function') {
+          r2.then(r3 => cb(null, new Uint8Array(r3))).catch(cb)
+        } else {
+          cb(null, new Uint8Array(r2))
+        }
+      } else {
+        cb(null, r1)
+      }
+    }).catch(cb)
+  } else {
+    cb(null, r0)
+  }
 }
 
 P.prototype.pick = function (opts, cb) {

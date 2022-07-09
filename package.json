@@ -8,7 +8,7 @@
     "get-image-pixels": "^1.0.1",
     "hyperdrive": "^10.21.0",
     "hyperswarm-web": "^2.1.1",
-    "mixmap-georender": "^3.0.0",
+    "mixmap-georender": "^5.0.0",
     "random-access-memory": "^3.1.4",
     "viewbox-query-planner": "^1.0.1"
   },
