@@ -88,8 +88,10 @@ function P(opts) {
   self._geotext = null
   self._font = opts.font
   self._getFont(function (err, font) {
-    self._geotext = geotext({ font })
-    self._recalc()
+    if (font) {
+      self._geotext = geotext({ font })
+      self._recalc()
+    }
   })
   self._plan = planner()
   self._queryResults = []
@@ -244,6 +246,7 @@ function setProps(dst, src) {
 P.prototype._getFont = function (cb) {
   var self = this
   var r0 = self._font
+  if (!r0) return cb(null, null)
   if (typeof self._font === 'function') {
     r0 = self._font(cb)
   }
