@@ -15,7 +15,7 @@
   "devDependencies": {
     "budo": "^11.7.0",
     "eyros": "^4.7.0",
-    "georender-style2png": "^3.0.0",
+    "georender-style2png": "^5.0.0",
     "mixmap": "^1.5.2",
     "regl": "^2.1.0"
   },
