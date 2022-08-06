@@ -125,7 +125,11 @@ P.prototype._onviewbox = function (bbox, zoom, cb) {
   self._getDb(function (db) {
     boxes.forEach(bbox => {
       db.query(bbox, { trace })
-        .then(q => self._loadQuery(bbox, q))
+        .then(async (q) => {
+          var now = performance.now()
+          await self._loadQuery(bbox, q)
+          self._debug('_loadQuery bbox', bbox, 'time', performance.now() - now, 'ms')
+        })
         .catch(e => self._error(e))
       function trace(tr) {
         self._trace[tr.file] = tr
