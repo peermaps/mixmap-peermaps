@@ -6,7 +6,7 @@ var getImagePixels = require('get-image-pixels')
 var bboxIntersect = require('bbox-intersect')
 var storageHooks = require('./lib/storage-hooks.js')
 var Features = require('./lib/features.js')
- 
+
 module.exports = P
 function P(opts) {
   var self = this
@@ -104,6 +104,11 @@ function P(opts) {
   self.layer = self._map.addLayer({
     viewbox: function (bbox, zoom, cb) { self._onviewbox(bbox,zoom,cb) }
   })
+
+  // for debugging purposes, safe to remove
+  self._debug = opts.debug ? debug : noop
+  self._recalcTotalTime = 0
+  self._recalcCount = 0
 }
 
 P.prototype._error = function (err) {
@@ -173,15 +178,22 @@ P.prototype._cull = function () {
 
 P.prototype._scheduleRecalc = function () {
   var self = this
-  if (self._recalcTimer) return
+  if (self._recalcTimer) {
+    self._debug('_scheduleRecalc is already scheduled, bailing out')
+    return
+  }
+  var interval = Math.min(2000, 200 + this._recalcTime)
+  self._debug('_scheduleRecalc interval', interval)
   self._recalcTimer = setTimeout(function () {
+    self._debug('_scheduleRecalc calling _recalc()')
     self._recalc()
     self._recalcTimer = null
-  }, Math.min(2000, 200 + this._recalcTime))
+  }, interval)
 }
 
 P.prototype._loadQuery = async function loadQuery(bbox, q) {
   var self = this
+  self._debug('_loadQuery bbox', bbox, 'q.ptr', q.ptr)
   var row
   var index = ++self._lastQueryIndex
   self._queryOpen[index] = true
@@ -202,15 +214,19 @@ P.prototype._loadQuery = async function loadQuery(bbox, q) {
 P.prototype._recalc = function() {
   var self = this
   self._getStyle(function (stylePixels, styleTexture) {
+    self._debug('- BEGIN _recalc() #', ++self._recalcCount)
     var start = performance.now()
     // todo: compare all-in-one props against pushing more props
     self._cull()
     var zoom = Math.round(self._map.getZoom())
+    var prepTime = performance.now()
     self._geodata = prepare({
       stylePixels: self._stylePixels,
       styleTexture: self._styleTexture,
       decoded: self._features.getDecoded(),
     })
+    self._debug('-- PERF time prep', performance.now() - prepTime, 'ms')
+    var propsTime = performance.now()
     var props = self._geodata.update(zoom)
     setProps(self.draw.point.props, props.pointP)
     setProps(self.draw.lineFill.props, props.lineP)
@@ -222,6 +238,8 @@ P.prototype._recalc = function() {
     setProps(self.draw.lineStrokeT.props, props.lineT)
     setProps(self.draw.areaT.props, props.areaT)
     setProps(self.draw.areaBorderT.props, props.areaBorderT)
+    self._debug('-- PERF time props', performance.now() - propsTime, 'ms')
+    var geoTextTime = performance.now()
     if (self._geotext) {
       var textProps = self._geotext.update(props, self._map)
       var ns = Object.keys(textProps)
@@ -233,8 +251,13 @@ P.prototype._recalc = function() {
         setProps(self.draw.label[n].props, textProps[n])
       }
     }
+    self._debug('-- PERF time geo text', performance.now() - geoTextTime, 'ms')
     self._map.draw()
     self._recalcTime = performance.now() - start
+    self._debug('-- PERF time _recalc()', self._recalcTime, 'ms')
+    self._recalcTotalTime += self._recalcTime
+    self._debug('-- PERF acc time _recalc()', self._recalcTotalTime, 'ms')
+    self._debug('- END _recalc()')
   })
 }
 
@@ -315,6 +338,10 @@ P.prototype.pick = function (opts, cb) {
       cb(null, { id: null, type: null })
     }
   })
+}
+
+function debug (...args) {
+  console.log(args.join(' '))
 }
 
 function feq(a,b,epsilon) {
