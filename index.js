@@ -186,7 +186,7 @@ P.prototype._scheduleRecalc = function () {
   self._debug('_scheduleRecalc interval', interval)
   self._recalcTimer = setTimeout(function () {
     self._debug('_scheduleRecalc calling _recalc()')
-    self._recalc()
+    self._recalc(true)
     self._recalcTimer = null
   }, interval)
 }
@@ -211,8 +211,13 @@ P.prototype._loadQuery = async function loadQuery(bbox, q) {
   self._recalc()
 }
 
-P.prototype._recalc = function() {
+P.prototype._recalc = function(fromScheduled) {
   var self = this
+  if (!fromScheduled && !self._recalcTimer) {
+    self._debug('something is calling _recalc() directly and nothing is scheduled')
+  } else if (!fromScheduled && self._recalcTimer) {
+    self._debug('something is calling _recalc() directly while already scheduled')
+  }
   self._getStyle(function (stylePixels, styleTexture) {
     self._debug('- BEGIN _recalc() #', ++self._recalcCount)
     var start = performance.now()
