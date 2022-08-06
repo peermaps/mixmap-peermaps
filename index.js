@@ -202,14 +202,17 @@ P.prototype._loadQuery = async function loadQuery(bbox, q) {
   var index = ++self._lastQueryIndex
   self._queryOpen[index] = true
   self._queryResults.push({ bbox, index })
+  var rowCount = 0
   while (row = await q.next()) {
     if (self._queryCanceled[index]) {
       self._recalc()
       return
     }
+    ++rowCount
     self._features.addBuffer(index, Buffer.from(row[1]))
     self._scheduleRecalc()
   }
+  self._debug('_loadQuery number of rows', rowCount)
   self._decodedCache = null
   delete self._queryOpen[index]
   self._recalc()
