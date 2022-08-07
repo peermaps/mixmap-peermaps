@@ -106,7 +106,7 @@ function P(opts) {
   })
 
   // for debugging purposes, safe to remove
-  self._debug = opts.debug ? debug : noop
+  self._debug = opts.debug ? console.log : noop
   self._recalcTotalTime = 0
   self._recalcCount = 0
 }
@@ -350,10 +350,6 @@ P.prototype.pick = function (opts, cb) {
       cb(null, { id: null, type: null })
     }
   })
-}
-
-function debug (...args) {
-  console.log(args.join(' '))
 }
 
 function feq(a,b,epsilon) {
