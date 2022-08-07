@@ -182,10 +182,7 @@ P.prototype._cull = function () {
 
 P.prototype._scheduleRecalc = function () {
   var self = this
-  if (self._recalcTimer) {
-    self._debug('_scheduleRecalc is already scheduled, bailing out')
-    return
-  }
+  if (self._recalcTimer) return
   var interval = Math.min(2000, 200 + this._recalcTime)
   self._debug('_scheduleRecalc interval', interval)
   self._recalcTimer = setTimeout(function () {
