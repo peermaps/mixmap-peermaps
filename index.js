@@ -220,6 +220,7 @@ P.prototype._recalc = function(fromScheduled) {
     self._debug('something is calling _recalc() directly and nothing is scheduled')
   } else if (!fromScheduled && self._recalcTimer) {
     self._debug('something is calling _recalc() directly while already scheduled')
+    return
   }
   self._getStyle(function (stylePixels, styleTexture) {
     self._debug('- BEGIN _recalc() #', ++self._recalcCount)
