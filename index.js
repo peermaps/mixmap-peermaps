@@ -90,7 +90,7 @@ function P(opts) {
   self._getFont(function (err, font) {
     if (font) {
       self._geotext = geotext({ font })
-      self._recalc()
+      self._scheduleRecalc()
     }
   })
   self._plan = planner()
