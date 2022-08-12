@@ -135,7 +135,6 @@ P.prototype._onviewbox = function (bbox, zoom, cb) {
         self._trace[tr.file] = tr
       }
     })
-    self._scheduleRecalc()
   })
 }
 
