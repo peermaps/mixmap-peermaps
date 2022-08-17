@@ -10,9 +10,9 @@ var eyros = require('eyros/2d')
 var mixmap = require('mixmap')
 var regl = require('regl')
 var storage = require('mixmap-peermaps/storage/http')(
-  'https://ipfs.io/ipfs/QmVCYUK51Miz4jEjJxCq3bA6dfq5FXD6s2EYp6LjHQhGmh'
+  params.get('data') ?? 'https://ipfs.io/ipfs/QmVCYUK51Miz4jEjJxCq3bA6dfq5FXD6s2EYp6LjHQhGmh'
 )
-var fontUrl = 'https://ipfs.io/ipfs/QmNQCPGV3XZrtNdQyMbZhSJcGisg4xCFyxeHs1tacrdETm/DejaVuSans.qbzf'
+var fontUrl = params.get('font') ?? 'https://ipfs.io/ipfs/QmNQCPGV3XZrtNdQyMbZhSJcGisg4xCFyxeHs1tacrdETm/DejaVuSans.qbzf'
 
 var mix = mixmap(regl, {
   extensions: [ 'oes_element_index_uint', 'oes_texture_float', 'ext_float_blend' ]
