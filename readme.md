@@ -9,35 +9,38 @@ var mixmapPeermaps = require('mixmap-peermaps')
 var eyros = require('eyros/2d')
 var mixmap = require('mixmap')
 var regl = require('regl')
-var storage = require('../storage/http')(
+var storage = require('mixmap-peermaps/storage/http')(
   'https://ipfs.io/ipfs/QmVCYUK51Miz4jEjJxCq3bA6dfq5FXD6s2EYp6LjHQhGmh'
 )
- 
+var fontUrl = 'https://ipfs.io/ipfs/QmNQCPGV3XZrtNdQyMbZhSJcGisg4xCFyxeHs1tacrdETm/DejaVuSans.qbzf'
+
 var mix = mixmap(regl, {
   extensions: [ 'oes_element_index_uint', 'oes_texture_float', 'ext_float_blend' ]
 })
-var map = mix.create({ 
+var map = mix.create({
   viewbox: [7.56, 47.55, 7.58, 47.56], // basel, switzerland
   backgroundColor: [0.82, 0.85, 0.99, 1.0],
   pickfb: { colorFormat: 'rgba', colorType: 'float32' }
 })
 
-var pm = mixmapPeermaps({
-  map,
-  eyros,
-  storage,
-  wasmSource: fetch('eyros2d.wasm'),
-  style: (function () {
-    var style = new Image
-    style.src = 'style.png'
-    return style
-  })()
-})
-window.addEventListener('click', function (ev) {
-  pm.pick({ x: ev.offsetX, y: ev.offsetY }, function (err, data) {
-    console.log('pick', err, data)
+var style = new Image
+style.onload = function () {
+  var pm = mixmapPeermaps({
+    map,
+    eyros,
+    storage,
+    wasmSource: fetch('eyros2d.wasm'),
+    font: fetch(fontUrl),
+    style
   })
-})
+
+  window.addEventListener('click', function (ev) {
+    pm.pick({ x: ev.offsetX, y: ev.offsetY }, function (err, data) {
+      console.log('pick', err, data)
+    })
+  })
+}
+style.src = 'style.png'
 
 window.addEventListener('keydown', function (ev) {
   if (ev.code === 'Digit0') {
@@ -53,7 +56,7 @@ window.addEventListener('keydown', function (ev) {
 window.addEventListener('resize', function (ev) {
   map.resize(window.innerWidth, window.innerHeight)
 })
- 
+
 document.body.style.margin = '0px'
 document.body.style.overflow = 'hidden'
 document.body.appendChild(mix.render())
