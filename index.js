@@ -90,7 +90,7 @@ function P(opts) {
   self._getFont(function (err, font) {
     if (font) {
       self._geotext = geotext({ font })
-      self._recalc()
+      self._scheduleRecalc()
     }
   })
   self._plan = planner()
@@ -135,7 +135,6 @@ P.prototype._onviewbox = function (bbox, zoom, cb) {
         self._trace[tr.file] = tr
       }
     })
-    self._scheduleRecalc()
   })
 }
 
@@ -202,7 +201,7 @@ P.prototype._loadQuery = async function loadQuery(bbox, q) {
   var rowCount = 0
   while (row = await q.next()) {
     if (self._queryCanceled[index]) {
-      self._recalc()
+      self._scheduleRecalc()
       return
     }
     ++rowCount
@@ -212,7 +211,6 @@ P.prototype._loadQuery = async function loadQuery(bbox, q) {
   self._debug('_loadQuery number of rows', rowCount)
   self._decodedCache = null
   delete self._queryOpen[index]
-  self._recalc()
 }
 
 P.prototype._recalc = function(fromScheduled) {
@@ -221,6 +219,7 @@ P.prototype._recalc = function(fromScheduled) {
     self._debug('something is calling _recalc() directly and nothing is scheduled')
   } else if (!fromScheduled && self._recalcTimer) {
     self._debug('something is calling _recalc() directly while already scheduled')
+    return
   }
   self._getStyle(function (stylePixels, styleTexture) {
     self._debug('- BEGIN _recalc() #', ++self._recalcCount)
