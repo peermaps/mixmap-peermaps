@@ -122,19 +122,35 @@ P.prototype._onviewbox = function (bbox, zoom, cb) {
     self._plan.add(boxes[i])
   }
   self._zoom = zoom
-  self._getDb(function (db) {
-    boxes.forEach(bbox => {
-      db.query(bbox, { trace })
-        .then(async (q) => {
-          var now = performance.now()
-          await self._loadQuery(bbox, q)
-          self._debug('_loadQuery bbox', bbox, 'time', performance.now() - now, 'ms')
-        })
-        .catch(e => self._error(e))
-      function trace(tr) {
-        self._trace[tr.file] = tr
-      }
+  self._getDb(async function (db) {
+    var queries = boxes.map(bbox => {
+      return new Promise((resolve, reject) => {
+        db.query(bbox, { trace })
+          .then(async (q) => {
+            var now = performance.now()
+            try {
+              await self._loadQuery(bbox, q)
+              self._debug('_loadQuery bbox', bbox, 'time', performance.now() - now, 'ms')
+              resolve()
+            }
+            catch (e) {
+              reject(e)
+            }
+          })
+          .catch(reject)
+      })
     })
+    try {
+      await Promise.all(queries)
+      cb(null, null)
+    }
+    catch (e) {
+      self._error(e)
+      cb(e)
+    }
+    function trace(tr) {
+      self._trace[tr.file] = tr
+    }
   })
 }
 
