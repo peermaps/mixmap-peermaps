@@ -5,6 +5,9 @@ var planner = require('viewbox-query-planner')
 var getImagePixels = require('get-image-pixels')
 var bboxIntersect = require('bbox-intersect')
 var storageHooks = require('./lib/storage-hooks.js')
+var {pipeline} = require('stream')
+var through = require('through2')
+var from = require('from2')
 var Features = require('./lib/features.js')
 
 module.exports = P
@@ -32,7 +35,11 @@ function P(opts) {
     },
   })
   self._dbQueue = []
-  self._features = new Features
+  self._features = new Features({
+    decoder: {
+      onItem: () => self._scheduleRecalc()
+    },
+  })
   opts.eyros({ storage: self._storage, wasmSource: opts.wasmSource })
     .then(db => {
       self._db = db
@@ -129,7 +136,8 @@ P.prototype._onviewbox = function (bbox, zoom, cb) {
           .then(async (q) => {
             var now = performance.now()
             try {
-              await self._loadQuery(bbox, q)
+              // await self._loadQuery(bbox, q)
+              await self._loadQueryStream(bbox, q)
               self._debug('_loadQuery bbox', bbox, 'time', performance.now() - now, 'ms')
               resolve()
             }
@@ -205,6 +213,53 @@ P.prototype._scheduleRecalc = function () {
     self._recalc(true)
     self._recalcTimer = null
   }, interval)
+}
+
+P.prototype._loadQueryStream = async function loadQueryStream (bbox, q) {
+  var self = this
+  self._debug('_loadQueryStream bbox', bbox, 'q.ptr', q.ptr)
+  var index = ++self._lastQueryIndex
+  self._queryOpen[index] = true
+  self._queryResults.push({ bbox, index })
+  var rowCount = -1
+  return new Promise(function (resolve, reject) {
+    pipeline(
+      from.obj(async function (_, next) {
+        try {
+          var row = await q.next()
+          if (row) next(null, row)
+          else next(null, null)
+        }
+        catch (error) {
+          next(null, null)
+        }
+      }),
+      through.obj(function (row, _, next) {
+        rowCount++
+        var stream = this
+        if (self._queryCanceled[index]) {
+          next(null, null)
+          return
+        }
+        next(null, {
+          queryIndex: index,
+          rowCount,
+          buffer: Buffer.from(row[1]),
+        })
+      }),
+      self._features.decoder,
+      function onFinish (error) {
+        if (error) {
+          console.log(error)
+        }
+        self._debug('_loadQueryStream number of rows', rowCount)
+        self._decodedCache = null
+        delete self._queryOpen[index]
+        resolve()
+      }
+    )
+  })
+  
 }
 
 P.prototype._loadQuery = async function loadQuery(bbox, q) {
