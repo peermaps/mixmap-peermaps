@@ -36,9 +36,7 @@ function P(opts) {
   })
   self._dbQueue = []
   self._features = new Features({
-    decoder: {
-      onItem: () => self._scheduleRecalc()
-    },
+    decoderOnItem: () => self._scheduleRecalc(),
   })
   opts.eyros({ storage: self._storage, wasmSource: opts.wasmSource })
     .then(db => {
@@ -136,8 +134,12 @@ P.prototype._onviewbox = function (bbox, zoom, cb) {
           .then(async (q) => {
             var now = performance.now()
             try {
-              // await self._loadQuery(bbox, q)
-              await self._loadQueryStream(bbox, q)
+              if (window.Worker) {
+                await self._loadQueryStream(bbox, q)  
+              }
+              else {
+                await self._loadQuery(bbox, q)  
+              }
               self._debug('_loadQuery bbox', bbox, 'time', performance.now() - now, 'ms')
               resolve()
             }
@@ -226,28 +228,26 @@ P.prototype._loadQueryStream = async function loadQueryStream (bbox, q) {
     pipeline(
       from.obj(async function (_, next) {
         try {
+          if (self._queryCanceled[index]) {
+            next(null, null)
+            return
+          }
+          rowCount++
           var row = await q.next()
-          if (row) next(null, row)
+          if (row) {
+            next(null, {
+              queryIndex: index,
+              rowCount,
+              buffer: Buffer.from(row[1]),
+            })
+          }
           else next(null, null)
         }
         catch (error) {
           next(null, null)
         }
       }),
-      through.obj(function (row, _, next) {
-        rowCount++
-        var stream = this
-        if (self._queryCanceled[index]) {
-          next(null, null)
-          return
-        }
-        next(null, {
-          queryIndex: index,
-          rowCount,
-          buffer: Buffer.from(row[1]),
-        })
-      }),
-      self._features.decoder,
+      self._features.decoder(),
       function onFinish (error) {
         if (error) {
           console.log(error)
