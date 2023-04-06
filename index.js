@@ -35,9 +35,7 @@ function P(opts) {
     },
   })
   self._dbQueue = []
-  self._features = new Features({
-    decoderOnItem: () => self._scheduleRecalc(),
-  })
+  self._features = new Features()
   opts.eyros({ storage: self._storage, wasmSource: opts.wasmSource })
     .then(db => {
       self._db = db
@@ -247,7 +245,12 @@ P.prototype._loadQueryStream = async function loadQueryStream (bbox, q) {
           next(null, null)
         }
       }),
-      self._features.decoder(),
+      self._features.decoder({
+        onItem: function (row) {
+          self._features.addBufferDecoded(row)
+          self._scheduleRecalc()
+        },
+      }),
       function onFinish (error) {
         if (error) {
           console.log(error)
