@@ -125,9 +125,13 @@ P.prototype._error = function (err) {
 P.prototype.setStorage = function (opts) {
   this._queryWorker.postMessage({
     type: 'init:setStorage',
-    storage: opts.storage ? workerBundle(opts.storage) : null,
+    storage: opts.storage ? workerBundle(opts.storage, 'storage') : null,
     storageOptions: opts.storageOptions,
   })
+  // restart the query planner
+  this._plan = planner()
+  // emit our current viewbox for querying
+  this._onviewbox(this._map.viewbox, this._map.zoom, noop)
 }
 
 P.prototype._onviewbox = function (bbox, zoom, cb) {
