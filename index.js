@@ -5,10 +5,10 @@ var planner = require('viewbox-query-planner')
 var getImagePixels = require('get-image-pixels')
 var bboxIntersect = require('bbox-intersect')
 var work = require('webworkify')
-const { pipeline, Readable, Transform, Writable } = require('streamx')
 var storageHooks = require('./lib/storage-hooks.js')
 var Features = require('./lib/features.js')
-var queryExecutorWorker = require('./lib/query-executor-worker')
+var queryWorker = require('./lib/query-worker')
+var workerBundle = require('./lib/browserify-worker-bundler')
 
 module.exports = P
 function P(opts) {
@@ -18,33 +18,34 @@ function P(opts) {
   self._map.on('resize', function () {
     self._scheduleRecalc()
   })
-  self._trace = {}
-  self._loading = new Set
-  self._storage = storageHooks(opts.storage, {
-    beforeLength: function (name) {
-      self._loading.add(name)
-    },
-    afterLength: function (name) {
-      self._loading.delete(name)
-    },
-    beforeRead: function (name) {
-      self._loading.add(name)
-    },
-    afterRead: function (name) {
-      self._loading.delete(name)
-    },
-  })
-  self._dbQueue = []
   self._features = new Features()
-  opts.eyros({ storage: self._storage, wasmSource: opts.wasmSource })
-    .then(db => {
-      self._db = db
-      for (var i = 0; i < self._dbQueue.length; i++) {
-        self._dbQueue[i](db)
-      }
-      self._dbQueue = null
-    })
-    .catch(err => self._error(err))
+  self._queryWorker = work(queryWorker)
+  self._queryWorker.onmessage = function (e) {
+    var {type} = e.data
+    if (type === 'query:result') {
+      var {queryIndex, rowCount, result} = e.data
+      self._queryOpen[queryIndex] = null
+      self._features.decoder.emit('decode', {
+        queryIndex,
+        rowCount,
+        buffer: Buffer.from(result[1]),
+      })
+    }
+    if (type === 'query:done') {
+      self._decodedCache = null
+    }
+  }
+  self._features.decoder.on('decoded', function (row) {
+    self._features.addBufferDecoded(row)
+    self._scheduleRecalc()
+  })
+  self._queryWorker.postMessage({
+    type: 'init:bundles',
+    eyros: workerBundle(opts.eyros, 'eyros'),
+    storage: workerBundle(opts.storage, 'storage'),
+    storageOptions: opts.storageOptions,
+    wasmSourceUrl: opts.wasmSourceUrl,
+  })
 
   self._stylePixels = null
   self._styleTexture = null
@@ -101,39 +102,12 @@ function P(opts) {
   self._lastQueryIndex = -1
   self._queryCanceled = {}
   self._queryOpen = {}
-  self._queryEventSource = new Transform()
-  // query pipeline
-  pipeline(
-    self._queryEventSource,
-    self._queryExecutorStream({
-      eyros: opts.eyros,
-      storage: self._storage,
-      wasmSource: opts.wasmSource,
-    }),
-    self._features.decoderStream,
-    new Writable ({
-      write (row, next) {
-        self._features.addBufferDecoded(row)
-        self._scheduleRecalc()
-        next()
-      },
-    }),
-    function onFinish (error) {
-      // we should never finish
-      if (error) console.log(error)
-    }
-  )
   self._recalcTimer = null
   self._recalcTime = 0
   self.props = {}
   self.layer = self._map.addLayer({
     viewbox: function (bbox, zoom, cb) {
-      if (window.Worker) {
-        self._onviewboxStream(bbox,zoom,cb)
-      }
-      else {
-        self._onviewbox(bbox,zoom,cb)
-      }
+      self._onviewbox(bbox,zoom,cb)
     }
   })
 
@@ -147,100 +121,11 @@ P.prototype._error = function (err) {
   console.error('CAUGHT', err)
 }
 
-P.prototype._onviewboxStream = function (bbox, zoom, cb) {
-  var self = this
-  var boxes = self._plan.update(bbox)
-  for (var i = 0; i < boxes.length; i++) {
-    self._plan.add(boxes[i])
-  }
-  self._zoom = zoom
-  boxes.forEach(function (bbox) {
-    var queryIndex = ++self._lastQueryIndex
-    self._queryEventSource.push({
-      type: 'start',
-      bbox,
-      queryIndex,
-    })
-    self._queryOpen[queryIndex] = true
-    self._queryResults.push({ bbox, queryIndex })
-  })
-  cb()
-}
-
-P.prototype._queryExecutorStream = function (opts) {
-  if (!window.Worker) return new Transform()
-  var self = this
-
-  var worker = work(queryExecutorWorker)
-
-  worker.postMessage({
-    type: 'init',
-    eyrosPath: opts.eyros, // could require this directly
-    storage: opts.storage, // not sure how to inject this in the bundle
-    wasmSource: opts.wasmSource, // could require this directly
-  })
-
-  function handlerName (i) {
-    return `message_handler__querier_${i}`
-  }
-
-  // key : string handlerName value for queryIndex
-  // value : the handler actively listening to worker 'message' events
-  var activeHandlers = {}
-  
-  // expects events that describe query management
-  // if type === 'cancel', except a queryIndex to cancel
-  // if type === 'start', except a bbox to start querying
-  // reads < row : { type: 'start' | 'cancel', bbox?, queryIndex? }
-  // writes > { queryIndex, bbox, result }
-  return new Transform({
-    transform (row, next) {
-      var stream = this
-      var {type} = row
-      if (type === 'cancel') {
-        var {queryIndex, bbox} = row
-        // let our worker know that it can stop fetching related queries
-        worker.postMessage({ type, bbox, queryIndex })
-        worker.removeEventListener(
-          'message',
-          activeHandlers[handlerName(row.queryIndex)])
-        delete activeHandlers[handlerName(row.queryIndex)]
-        self._decodedCache = null
-        return next()
-      }
-      // type === 'start'
-      else if (type === 'start') {
-        var {queryIndex, bbox} = row
-        var rowCount = -1
-
-        function messageHandler (e) {
-          var msg = e.data
-          if (msg.type === 'result') {
-            rowCount++
-            return stream.push({
-              queryIndex,
-              buffer: Buffer.from(msg.result[1]),
-              rowCount,
-            })
-          }
-          if (msg.type === 'done') {
-            worker.removeEventListener('message', messageHandler)
-            delete activeHandlers[handlerName(queryIndex)]
-            self._decodedCache = null
-          }
-        }
-        Object.defineProperty(messageHandler, 'name', {
-          value: handlerName(queryIndex),
-          writable: false,
-        })
-
-        activeHandlers[handlerName(queryIndex)] = messageHandler
-
-        worker.addEventListener('message', messageHandler)
-        worker.postMessage({ type, bbox, queryIndex })
-        next()
-      }
-    }
+P.prototype.setStorage = function (opts) {
+  this._queryWorker.postMessage({
+    type: 'init:setStorage',
+    storage: opts.storage ? workerBundle(opts.storage) : null,
+    storageOptions: opts.storageOptions,
   })
 }
 
@@ -251,47 +136,17 @@ P.prototype._onviewbox = function (bbox, zoom, cb) {
     self._plan.add(boxes[i])
   }
   self._zoom = zoom
-  self._getDb(async function (db) {
-    var queries = boxes.map(bbox => {
-      return new Promise((resolve, reject) => {
-        db.query(bbox, { trace })
-          .then(async (q) => {
-            var now = performance.now()
-            try {
-              if (window.Worker) {
-                await self._loadQueryStream(bbox, q)  
-              }
-              else {
-                await self._loadQuery(bbox, q)  
-              }
-              self._debug('_loadQuery bbox', bbox, 'time', performance.now() - now, 'ms')
-              resolve()
-            }
-            catch (e) {
-              reject(e)
-            }
-          })
-          .catch(reject)
-      })
+  boxes.forEach(function (bbox) {
+    var queryIndex = ++self._lastQueryIndex
+    self._queryOpen[queryIndex] = true
+    self._queryResults.push({ bbox, queryIndex })
+    self._queryWorker.postMessage({
+      type: 'query:init',
+      bbox,
+      queryIndex,
     })
-    try {
-      await Promise.all(queries)
-      cb(null, null)
-    }
-    catch (e) {
-      self._error(e)
-      cb(e)
-    }
-    function trace(tr) {
-      self._trace[tr.file] = tr
-    }
   })
-}
-
-P.prototype._getDb = function (cb) {
-  var self = this
-  if (self._db) cb(self._db)
-  else self._dbQueue.push(cb)
+  cb()
 }
 
 P.prototype._getStyle = function (cb) {
@@ -325,13 +180,6 @@ P.prototype._cull = function () {
       self._features.cull(i)
     }
   }
-  // for (var file of self._loading) {
-  //   var tr = self._trace[file]
-  //   if (!tr) continue
-  //   if (!bboxIntersect(self._map.viewbox, tr.bbox)) {
-  //     self._storage.destroy(file)
-  //   }
-  // }
 }
 
 P.prototype._scheduleRecalc = function () {
@@ -344,84 +192,6 @@ P.prototype._scheduleRecalc = function () {
     self._recalc(true)
     self._recalcTimer = null
   }, interval)
-}
-
-
-P.prototype._loadQueryStream = async function loadQueryStream (bbox, q) {
-  var self = this
-  self._debug('_loadQueryStream bbox', bbox, 'q.ptr', q.ptr)
-  var index = ++self._lastQueryIndex
-  self._queryOpen[index] = true
-  self._queryResults.push({ bbox, index })
-  var rowCount = -1
-  return new Promise(function (resolve, reject) {
-    pipeline(
-      new Readable({
-        async read (next) {
-          var stream = this
-          try {
-            if (self._queryCanceled[index]) {
-              return next(null, null)
-            }
-            rowCount++
-            var row = await q.next()
-            if (row) {
-              stream.push({
-                queryIndex: index,
-                rowCount,
-                buffer: Buffer.from(row[1]),
-              })
-              return next()
-            }
-            else return next(null, null)
-          }
-          catch (error) {
-            next(null, null)
-          }
-        },
-      }),
-      self._features.decoderStream,
-      new Writable ({
-        write (row, next) {
-          self._features.addBufferDecoded(row)
-          self._scheduleRecalc()
-          next()
-        },
-      }),
-      function onFinish (error) {
-        if (error) {
-          console.log(error)
-        }
-        self._debug('_loadQueryStream number of rows', rowCount)
-        self._decodedCache = null
-        delete self._queryOpen[index]
-        resolve()
-      }
-    )
-  })
-  
-}
-
-P.prototype._loadQuery = async function loadQuery(bbox, q) {
-  var self = this
-  self._debug('_loadQuery bbox', bbox, 'q.ptr', q.ptr)
-  var row
-  var index = ++self._lastQueryIndex
-  self._queryOpen[index] = true
-  self._queryResults.push({ bbox, index })
-  var rowCount = 0
-  while (row = await q.next()) {
-    if (self._queryCanceled[index]) {
-      self._scheduleRecalc()
-      return
-    }
-    ++rowCount
-    self._features.addBuffer(index, Buffer.from(row[1]))
-    self._scheduleRecalc()
-  }
-  self._debug('_loadQuery number of rows', rowCount)
-  self._decodedCache = null
-  delete self._queryOpen[index]
 }
 
 P.prototype._recalc = function(fromScheduled) {
