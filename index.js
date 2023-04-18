@@ -122,16 +122,39 @@ P.prototype._error = function (err) {
   console.error('CAUGHT', err)
 }
 
-P.prototype.setStorage = function (opts) {
-  this._queryWorker.postMessage({
-    type: 'init:setStorage',
-    storage: opts.storage ? workerBundle(opts.storage, 'storage') : null,
-    storageOptions: opts.storageOptions,
+P.prototype.terminate = function () {
+  var self = this
+  var resolved = false
+  var terminating = new Set
+  terminating.add('query-worker')
+  terminating.add('decoder-worker')
+  return new Promise((resolve, reject) => {
+    self._queryWorker.onmessage = function (e) {
+      var {type} = e.data
+      if (type === 'terminated') {
+        self._queryWorker.terminate()
+        terminating.delete('query-worker')
+        if (terminating.has('decoder-worker')) return
+        if (!resolved) {
+          resolved = true
+          resolve()
+        }
+      }
+    }
+    self._queryWorker.postMessage({
+      type: 'terminate',
+    })
+    self._features.decoder.on('terminated', function () {
+      terminating.delete('decoder-worker')
+      if (terminating.has('query-worker')) return
+      if (!resolved) {
+        resolved = true
+        resolve()
+      }
+    })
+    self._features.decoder.emit('terminate')
   })
-  // restart the query planner
-  this._plan = planner()
-  // emit our current viewbox for querying
-  this._onviewbox(this._map.viewbox, this._map.zoom, noop)
+  
 }
 
 P.prototype._onviewbox = function (bbox, zoom, cb) {
