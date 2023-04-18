@@ -24,7 +24,6 @@ function P(opts) {
     var {type} = e.data
     if (type === 'query:result') {
       var {queryIndex, rowCount, result} = e.data
-      self._queryOpen[queryIndex] = null
       self._features.decoder.emit('decode', {
         queryIndex,
         rowCount,
@@ -32,7 +31,9 @@ function P(opts) {
       })
     }
     if (type === 'query:done') {
+      var {queryIndex} = e.data
       self._decodedCache = null
+      self._queryOpen[queryIndex] = null
     }
   }
   self._features.decoder.on('decoded', function (row) {
@@ -169,7 +170,7 @@ P.prototype._cull = function () {
       if (self._queryOpen[qr.queryIndex]) {
         self._queryCanceled[qr.queryIndex] = true
         delete self._queryOpen[qr.queryIndex]
-        self._queryWorker.emit({
+        self._queryWorker.postMessage({
           type: 'query:cancel',
           queryIndex: qr.queryIndex,
           currentMapViewbox: self._map.viewbox,
