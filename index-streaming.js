@@ -314,10 +314,10 @@ P.prototype._cull = function () {
       if (self._queryOpen[qr.queryIndex]) {
         self._queryCanceled[qr.queryIndex] = true
         delete self._queryOpen[qr.queryIndex]
-        self._queryWorker.emit({
-          type: 'query:cancel',
+        self._queryEventSource.push({
+          type: 'cancel',
+          bbox: qr.bbox,
           queryIndex: qr.queryIndex,
-          currentMapViewbox: self._map.viewbox,
         })
       }
       self._plan.subtract(qr.bbox)
@@ -325,13 +325,13 @@ P.prototype._cull = function () {
       self._features.cull(i)
     }
   }
-  // for (var file of self._loading) {
-  //   var tr = self._trace[file]
-  //   if (!tr) continue
-  //   if (!bboxIntersect(self._map.viewbox, tr.bbox)) {
-  //     self._storage.destroy(file)
-  //   }
-  // }
+  for (var file of self._loading) {
+    var tr = self._trace[file]
+    if (!tr) continue
+    if (!bboxIntersect(self._map.viewbox, tr.bbox)) {
+      self._storage.destroy(file)
+    }
+  }
 }
 
 P.prototype._scheduleRecalc = function () {
