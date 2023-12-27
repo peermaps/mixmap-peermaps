@@ -1,8 +1,9 @@
 {
-  "name": "mixmap-peermaps",
-  "version": "1.4.1",
+  "name": "@rubenrodriguez/mixmap-peermaps",
+  "version": "1.5.0",
   "description": "peermaps layer for mixmap",
   "dependencies": {
+    "b4a": "^1.6.3",
     "bbox-intersect": "^0.1.2",
     "georender-pack": "^4.0.0",
     "get-image-pixels": "^1.0.1",
@@ -10,7 +11,8 @@
     "hyperswarm-web": "^2.1.1",
     "mixmap-georender": "^5.0.0",
     "random-access-memory": "^3.1.4",
-    "viewbox-query-planner": "^1.0.1"
+    "viewbox-query-planner": "^1.0.1",
+    "webworkify": "^1.5.0"
   },
   "devDependencies": {
     "budo": "^11.7.0",

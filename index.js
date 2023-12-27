@@ -4,8 +4,11 @@ var geotext = require('mixmap-georender/text')
 var planner = require('viewbox-query-planner')
 var getImagePixels = require('get-image-pixels')
 var bboxIntersect = require('bbox-intersect')
+var work = require('webworkify')
 var storageHooks = require('./lib/storage-hooks.js')
 var Features = require('./lib/features.js')
+var queryWorker = require('./lib/query-worker')
+var workerBundle = require('./lib/browserify-worker-bundler')
 
 module.exports = P
 function P(opts) {
@@ -15,33 +18,35 @@ function P(opts) {
   self._map.on('resize', function () {
     self._scheduleRecalc()
   })
-  self._trace = {}
-  self._loading = new Set
-  self._storage = storageHooks(opts.storage, {
-    beforeLength: function (name) {
-      self._loading.add(name)
-    },
-    afterLength: function (name) {
-      self._loading.delete(name)
-    },
-    beforeRead: function (name) {
-      self._loading.add(name)
-    },
-    afterRead: function (name) {
-      self._loading.delete(name)
-    },
+  self._features = new Features()
+  self._queryWorker = work(queryWorker)
+  self._queryWorker.onmessage = function (e) {
+    var {type} = e.data
+    if (type === 'query:result') {
+      var {queryIndex, rowCount, result} = e.data
+      self._features.decoder.emit('decode', {
+        queryIndex,
+        rowCount,
+        buffer: Buffer.from(result[1]),
+      })
+    }
+    if (type === 'query:done') {
+      var {queryIndex} = e.data
+      self._decodedCache = null
+      self._queryOpen[queryIndex] = null
+    }
+  }
+  self._features.decoder.on('decoded', function (row) {
+    self._features.addBufferDecoded(row)
+    self._scheduleRecalc()
   })
-  self._dbQueue = []
-  self._features = new Features
-  opts.eyros({ storage: self._storage, wasmSource: opts.wasmSource })
-    .then(db => {
-      self._db = db
-      for (var i = 0; i < self._dbQueue.length; i++) {
-        self._dbQueue[i](db)
-      }
-      self._dbQueue = null
-    })
-    .catch(err => self._error(err))
+  self._queryWorker.postMessage({
+    type: 'init:bundles',
+    eyros: workerBundle(opts.eyros, 'eyros'),
+    storage: workerBundle(opts.storage, 'storage'),
+    storageOptions: opts.storageOptions,
+    wasmSourceUrl: opts.wasmSourceUrl,
+  })
 
   self._stylePixels = null
   self._styleTexture = null
@@ -102,7 +107,9 @@ function P(opts) {
   self._recalcTime = 0
   self.props = {}
   self.layer = self._map.addLayer({
-    viewbox: function (bbox, zoom, cb) { self._onviewbox(bbox,zoom,cb) }
+    viewbox: function (bbox, zoom, cb) {
+      self._onviewbox(bbox,zoom,cb)
+    }
   })
 
   // for debugging purposes, safe to remove
@@ -115,6 +122,41 @@ P.prototype._error = function (err) {
   console.error('CAUGHT', err)
 }
 
+P.prototype.terminate = function () {
+  var self = this
+  var resolved = false
+  var terminating = new Set
+  terminating.add('query-worker')
+  terminating.add('decoder-worker')
+  return new Promise((resolve, reject) => {
+    self._queryWorker.onmessage = function (e) {
+      var {type} = e.data
+      if (type === 'terminated') {
+        self._queryWorker.terminate()
+        terminating.delete('query-worker')
+        if (terminating.has('decoder-worker')) return
+        if (!resolved) {
+          resolved = true
+          resolve()
+        }
+      }
+    }
+    self._queryWorker.postMessage({
+      type: 'terminate',
+    })
+    self._features.decoder.on('terminated', function () {
+      terminating.delete('decoder-worker')
+      if (terminating.has('query-worker')) return
+      if (!resolved) {
+        resolved = true
+        resolve()
+      }
+    })
+    self._features.decoder.emit('terminate')
+  })
+  
+}
+
 P.prototype._onviewbox = function (bbox, zoom, cb) {
   var self = this
   var boxes = self._plan.update(bbox)
@@ -122,42 +164,17 @@ P.prototype._onviewbox = function (bbox, zoom, cb) {
     self._plan.add(boxes[i])
   }
   self._zoom = zoom
-  self._getDb(async function (db) {
-    var queries = boxes.map(bbox => {
-      return new Promise((resolve, reject) => {
-        db.query(bbox, { trace })
-          .then(async (q) => {
-            var now = performance.now()
-            try {
-              await self._loadQuery(bbox, q)
-              self._debug('_loadQuery bbox', bbox, 'time', performance.now() - now, 'ms')
-              resolve()
-            }
-            catch (e) {
-              reject(e)
-            }
-          })
-          .catch(reject)
-      })
+  boxes.forEach(function (bbox) {
+    var queryIndex = ++self._lastQueryIndex
+    self._queryOpen[queryIndex] = true
+    self._queryResults.push({ bbox, queryIndex })
+    self._queryWorker.postMessage({
+      type: 'query:init',
+      bbox,
+      queryIndex,
     })
-    try {
-      await Promise.all(queries)
-      cb(null, null)
-    }
-    catch (e) {
-      self._error(e)
-      cb(e)
-    }
-    function trace(tr) {
-      self._trace[tr.file] = tr
-    }
   })
-}
-
-P.prototype._getDb = function (cb) {
-  var self = this
-  if (self._db) cb(self._db)
-  else self._dbQueue.push(cb)
+  cb()
 }
 
 P.prototype._getStyle = function (cb) {
@@ -177,20 +194,18 @@ P.prototype._cull = function () {
     if (qr === null) continue
     if (!bboxIntersect(self._map.viewbox, qr.bbox)) {
       culling++
-      if (self._queryOpen[qr.index]) {
-        self._queryCanceled[qr.index] = true
-        delete self._queryOpen[qr.index]
+      if (self._queryOpen[qr.queryIndex]) {
+        self._queryCanceled[qr.queryIndex] = true
+        delete self._queryOpen[qr.queryIndex]
+        self._queryWorker.postMessage({
+          type: 'query:cancel',
+          queryIndex: qr.queryIndex,
+          currentMapViewbox: self._map.viewbox,
+        })
       }
       self._plan.subtract(qr.bbox)
       self._queryResults[i] = null
       self._features.cull(i)
-    }
-  }
-  for (var file of self._loading) {
-    var tr = self._trace[file]
-    if (!tr) continue
-    if (!bboxIntersect(self._map.viewbox, tr.bbox)) {
-      self._storage.destroy(file)
     }
   }
 }
@@ -205,28 +220,6 @@ P.prototype._scheduleRecalc = function () {
     self._recalc(true)
     self._recalcTimer = null
   }, interval)
-}
-
-P.prototype._loadQuery = async function loadQuery(bbox, q) {
-  var self = this
-  self._debug('_loadQuery bbox', bbox, 'q.ptr', q.ptr)
-  var row
-  var index = ++self._lastQueryIndex
-  self._queryOpen[index] = true
-  self._queryResults.push({ bbox, index })
-  var rowCount = 0
-  while (row = await q.next()) {
-    if (self._queryCanceled[index]) {
-      self._scheduleRecalc()
-      return
-    }
-    ++rowCount
-    self._features.addBuffer(index, Buffer.from(row[1]))
-    self._scheduleRecalc()
-  }
-  self._debug('_loadQuery number of rows', rowCount)
-  self._decodedCache = null
-  delete self._queryOpen[index]
 }
 
 P.prototype._recalc = function(fromScheduled) {
