@@ -1,6 +1,6 @@
 {
   "name": "@rubenrodriguez/mixmap-peermaps",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "peermaps layer for mixmap",
   "dependencies": {
     "b4a": "^1.6.3",
